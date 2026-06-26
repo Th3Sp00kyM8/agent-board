@@ -330,6 +330,11 @@ export default function App() {
     };
   });
   const unblockedToDo = items.filter(i => i.column === 'To Do' && !i.reserved).length;
+  const labels = { ...DEFAULT_APP_CONFIG.labels, ...(appConfig.labels || {}) };
+  const workstreamLabel = labels.workstream || 'Workstream';
+  const cycleLabel = labels.cycle || 'Sprint';
+  const cycleNoun = cycleLabel.toLowerCase();
+  const workstreamName = (item) => `${workstreamLabel} ${item.path}`;
 
   function toggleSection(column, tier) {
     const key = `${column}:${tier}`;
@@ -345,7 +350,7 @@ export default function App() {
     const item = items.find(i => i.id === itemId);
     if (!item) return;
     if (item.reserved && newColumn === 'Doing') {
-      alert(`Workstream ${item.path} is RESERVED. Cannot move to Doing without explicit un-flag.`);
+      alert(`${workstreamName(item)} is RESERVED. Cannot move to Doing without explicit un-flag.`);
       return;
     }
     const updates = { column: newColumn, updatedAt: nowIso() };
@@ -492,38 +497,38 @@ export default function App() {
 
     let md = `**${appConfig.projectName || 'Agent Board'} Sync** - ${new Date().toLocaleString()}\n\n`;
     md += `**Counts:** ${items.length} total - To Do: ${columnCounts['To Do'].total} (${unblockedToDo} unblocked) - Doing: ${columnCounts['Doing'].total} - In Review: ${columnCounts['In Review'].total} - Blocked: ${columnCounts['Blocked'].total} - Done: ${columnCounts['Done'].total}\n\n`;
-    md += `**Sprint board:**\n`;
-    md += `- Last sprint (${sprintBoard.lastRoundLabel}): ${sprintBoard.lastRoundSummary}\n`;
-    md += `- Current sprint (${sprintBoard.currentRound}): ${sprintBoard.currentRoundGoal}\n`;
-    md += `- Next sprint (${sprintBoard.nextRound}): ${sprintBoard.nextRoundGoal}\n\n`;
+    md += `**${cycleLabel} board:**\n`;
+    md += `- Last ${cycleNoun} (${sprintBoard.lastRoundLabel}): ${sprintBoard.lastRoundSummary}\n`;
+    md += `- Current ${cycleNoun} (${sprintBoard.currentRound}): ${sprintBoard.currentRoundGoal}\n`;
+    md += `- Next ${cycleNoun} (${sprintBoard.nextRound}): ${sprintBoard.nextRoundGoal}\n\n`;
     md += `**Agent status (auto-derived from Doing column):**\n`;
-    md += `- Developer: ${agentStatus.developer ? `Workstream ${agentStatus.developer.path} (${agentStatus.developer.actualRound || '-'}) - ${agentStatus.developer.title}` : 'idle'}\n`;
-    md += `- AI Agent: ${agentStatus.aiAgent ? `Workstream ${agentStatus.aiAgent.path} (${agentStatus.aiAgent.actualRound || '-'}) - ${agentStatus.aiAgent.title}` : 'idle'}\n`;
-    md += `- Reviewer: ${agentStatus.reviewer ? `Workstream ${agentStatus.reviewer.path} (${agentStatus.reviewer.actualRound || '-'}) - ${agentStatus.reviewer.title}` : 'idle'}\n\n`;
+    md += `- Developer: ${agentStatus.developer ? `${workstreamLabel} ${agentStatus.developer.path} (${agentStatus.developer.actualRound || '-'}) - ${agentStatus.developer.title}` : 'idle'}\n`;
+    md += `- AI Agent: ${agentStatus.aiAgent ? `${workstreamLabel} ${agentStatus.aiAgent.path} (${agentStatus.aiAgent.actualRound || '-'}) - ${agentStatus.aiAgent.title}` : 'idle'}\n`;
+    md += `- Reviewer: ${agentStatus.reviewer ? `${workstreamLabel} ${agentStatus.reviewer.path} (${agentStatus.reviewer.actualRound || '-'}) - ${agentStatus.reviewer.title}` : 'idle'}\n\n`;
     md += `**DOING (${groups['Doing'].length}):**\n`;
     if (groups['Doing'].length === 0) md += `_(none)_\n`;
     else groups['Doing'].forEach(i => {
       const stale = getStaleInfo(i);
-      md += `- Workstream ${i.path} - ${i.title}${i.actualRound ? ` (${i.actualRound})` : ''} [${i.severity}/${i.size}]${stale ? ` ! ${stale.reason}` : ''}\n`;
+      md += `- ${workstreamLabel} ${i.path} - ${i.title}${i.actualRound ? ` (${i.actualRound})` : ''} [${i.severity}/${i.size}]${stale ? ` ! ${stale.reason}` : ''}\n`;
       if (i.notes) md += `  - ${i.notes}\n`;
     });
     md += `\n**IN REVIEW (${groups['In Review'].length}):**\n`;
     if (groups['In Review'].length === 0) md += `_(none)_\n`;
     else groups['In Review'].forEach(i => {
-      md += `- Workstream ${i.path} - ${i.title}${i.actualRound ? ` (${i.actualRound})` : ''}\n`;
+      md += `- ${workstreamLabel} ${i.path} - ${i.title}${i.actualRound ? ` (${i.actualRound})` : ''}\n`;
       if (i.notes) md += `  - ${i.notes}\n`;
     });
     md += `\n**BLOCKED (${groups['Blocked'].length}):**\n`;
     if (groups['Blocked'].length === 0) md += `_(none)_\n`;
     else groups['Blocked'].forEach(i => {
-      md += `- Workstream ${i.path} - ${i.title} [${i.severity}/${i.size}]\n`;
+      md += `- ${workstreamLabel} ${i.path} - ${i.title} [${i.severity}/${i.size}]\n`;
       if (i.notes) md += `  - Blocker: ${i.notes}\n`;
     });
     md += `\n`;
     if (recentlyDone.length > 0) {
       md += `**RECENTLY DONE (last 7 days, ${recentlyDone.length}):**\n`;
       recentlyDone.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)).forEach(i => {
-        md += `- Workstream ${i.path} - ${i.title}${i.actualRound ? ` (${i.actualRound})` : ''}\n`;
+        md += `- ${workstreamLabel} ${i.path} - ${i.title}${i.actualRound ? ` (${i.actualRound})` : ''}\n`;
       });
       md += `\n`;
     }
@@ -531,7 +536,7 @@ export default function App() {
     if (topToDo.length > 0) {
       md += `**TOP TO DO (core release, highest severity, top 5):**\n`;
       topToDo.forEach(i => {
-        md += `- Workstream ${i.path} - ${i.title} [${i.severity}/${i.size}]${i.candidateRound ? ` (candidate sprint: ${i.candidateRound})` : ''}\n`;
+        md += `- ${workstreamLabel} ${i.path} - ${i.title} [${i.severity}/${i.size}]${i.candidateRound ? ` (candidate ${cycleNoun}: ${i.candidateRound})` : ''}\n`;
       });
     }
     return md;
@@ -618,7 +623,7 @@ export default function App() {
           <div className="bg-slate-900/50 border border-slate-800 rounded mb-2">
             <button onClick={() => setSprintExpanded(!sprintExpanded)} className="w-full px-3 py-1.5 flex items-center justify-between text-xs hover:bg-slate-800/50">
               <div className="flex items-center gap-3 flex-wrap text-left">
-                <div className="flex items-center gap-1 text-slate-400 font-semibold"><Target size={11} className="text-blue-400" />SPRINT BOARD</div>
+                <div className="flex items-center gap-1 text-slate-400 font-semibold"><Target size={11} className="text-blue-400" />{cycleLabel.toUpperCase()} BOARD</div>
                 <div className="flex items-center gap-2 text-[10px] text-slate-400">
                   <span><span className="text-green-400">{sprintBoard.lastRoundLabel}</span> closed</span>
                   <span className="text-slate-600">-</span>
@@ -626,11 +631,11 @@ export default function App() {
                   <span className="text-slate-600">-</span>
                   <span><span className="text-purple-400">{sprintBoard.nextRound}</span> planning</span>
                   <span className="text-slate-600">-</span>
-                  <span className="text-cyan-400">Developer: {agentStatus.developer ? `Workstream ${agentStatus.developer.path}` : 'idle'}</span>
+                  <span className="text-cyan-400">Developer: {agentStatus.developer ? `${workstreamLabel} ${agentStatus.developer.path}` : 'idle'}</span>
                   <span className="text-slate-600">-</span>
-                  <span className="text-purple-400">AI Agent: {agentStatus.aiAgent ? `Workstream ${agentStatus.aiAgent.path}` : 'idle'}</span>
+                  <span className="text-purple-400">AI Agent: {agentStatus.aiAgent ? `${workstreamLabel} ${agentStatus.aiAgent.path}` : 'idle'}</span>
                   <span className="text-slate-600">-</span>
-                  <span className="text-slate-400">Reviewer: {agentStatus.reviewer ? `Workstream ${agentStatus.reviewer.path}` : 'idle'}</span>
+                  <span className="text-slate-400">Reviewer: {agentStatus.reviewer ? `${workstreamLabel} ${agentStatus.reviewer.path}` : 'idle'}</span>
                 </div>
               </div>
               {sprintExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
@@ -640,24 +645,24 @@ export default function App() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
                   <div>
                     <div className="flex items-center justify-between mb-1">
-                      <label className="text-slate-500 text-[10px] uppercase tracking-wider flex items-center gap-1"><Check size={10} className="text-green-400" />Last sprint</label>
+                      <label className="text-slate-500 text-[10px] uppercase tracking-wider flex items-center gap-1"><Check size={10} className="text-green-400" />Last {cycleNoun}</label>
                       <input type="text" value={sprintBoard.lastRoundLabel} onChange={e => setSprintBoard({ ...sprintBoard, lastRoundLabel: e.target.value })} className="w-20 bg-slate-800 border border-slate-700 rounded px-1.5 py-0.5 text-[10px]" />
                     </div>
                     <textarea value={sprintBoard.lastRoundSummary} onChange={e => setSprintBoard({ ...sprintBoard, lastRoundSummary: e.target.value })} rows={3} placeholder="What shipped?" className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-[11px]" />
                   </div>
                   <div>
                     <div className="flex items-center justify-between mb-1">
-                      <label className="text-slate-500 text-[10px] uppercase tracking-wider flex items-center gap-1"><Zap size={10} className="text-blue-400" />Current sprint</label>
+                      <label className="text-slate-500 text-[10px] uppercase tracking-wider flex items-center gap-1"><Zap size={10} className="text-blue-400" />Current {cycleNoun}</label>
                       <div className="flex items-center gap-1">
                         <input type="text" value={sprintBoard.currentRound} onChange={e => setSprintBoard({ ...sprintBoard, currentRound: e.target.value })} className="w-20 bg-slate-800 border border-slate-700 rounded px-1.5 py-0.5 text-[10px]" />
                         <button onClick={() => setFilterRound(sprintBoard.currentRound)} className="text-[9px] px-1 py-0.5 bg-blue-900/40 hover:bg-blue-900/60 text-blue-300 rounded">Focus</button>
                       </div>
                     </div>
-                    <textarea value={sprintBoard.currentRoundGoal} onChange={e => setSprintBoard({ ...sprintBoard, currentRoundGoal: e.target.value })} rows={3} placeholder="Sprint goal / scope" className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-[11px]" />
+                    <textarea value={sprintBoard.currentRoundGoal} onChange={e => setSprintBoard({ ...sprintBoard, currentRoundGoal: e.target.value })} rows={3} placeholder={`${cycleLabel} goal / scope`} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-[11px]" />
                   </div>
                   <div>
                     <div className="flex items-center justify-between mb-1">
-                      <label className="text-slate-500 text-[10px] uppercase tracking-wider flex items-center gap-1"><Calendar size={10} className="text-purple-400" />Next sprint</label>
+                      <label className="text-slate-500 text-[10px] uppercase tracking-wider flex items-center gap-1"><Calendar size={10} className="text-purple-400" />Next {cycleNoun}</label>
                       <div className="flex items-center gap-1">
                         <input type="text" value={sprintBoard.nextRound} onChange={e => setSprintBoard({ ...sprintBoard, nextRound: e.target.value })} className="w-20 bg-slate-800 border border-slate-700 rounded px-1.5 py-0.5 text-[10px]" />
                         <button onClick={() => setFilterRound(sprintBoard.nextRound)} className="text-[9px] px-1 py-0.5 bg-purple-900/40 hover:bg-purple-900/60 text-purple-300 rounded">Focus</button>
@@ -696,7 +701,7 @@ export default function App() {
               <span className="text-purple-300 font-medium">{selectedIds.length} selected</span>
               <button onClick={() => setShowBulkMove(true)} className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 rounded flex items-center gap-1"><ArrowRight size={11} />Move to...</button>
               <button onClick={() => setShowBulkTier(true)} className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 rounded flex items-center gap-1"><Layers size={11} />Set tier...</button>
-              <button onClick={() => setShowBulkRound(true)} className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 rounded flex items-center gap-1"><Calendar size={11} />Set candidate sprint...</button>
+              <button onClick={() => setShowBulkRound(true)} className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 rounded flex items-center gap-1"><Calendar size={11} />Set candidate {cycleNoun}...</button>
               <button onClick={bulkDelete} className="px-2 py-0.5 bg-slate-800 hover:bg-red-900/50 rounded flex items-center gap-1 text-slate-300 hover:text-red-300"><Trash2 size={11} />Delete</button>
               <div className="flex-1"></div>
               <button onClick={clearSelection} className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-400">Clear</button>
@@ -716,10 +721,10 @@ export default function App() {
                   {RELEASE_TIERS.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
                 </select>
               </div>
-              <div><label className="block text-slate-500 mb-0.5">Workstream</label>
+              <div><label className="block text-slate-500 mb-0.5">{workstreamLabel}</label>
                 <input type="text" value={filterPath} onChange={e => setFilterPath(e.target.value)} placeholder="e.g. A" className="w-full bg-slate-800 border border-slate-700 rounded px-1.5 py-0.5" />
               </div>
-              <div><label className="block text-slate-500 mb-0.5">Sprint</label>
+              <div><label className="block text-slate-500 mb-0.5">{cycleLabel}</label>
                 <input type="text" value={filterRound} onChange={e => setFilterRound(e.target.value)} placeholder="e.g. Sprint 1" className="w-full bg-slate-800 border border-slate-700 rounded px-1.5 py-0.5" />
               </div>
               <div><label className="block text-slate-500 mb-0.5">Source</label>
@@ -876,8 +881,8 @@ export default function App() {
           )}
         </div>
 
-        {viewingItem && <TaskDetailModal item={viewingItem} onClose={() => setViewingItem(null)} onEdit={() => { setEditingItem(viewingItem); setViewingItem(null); }} onDelete={(id) => { if (confirm(`Delete workstream ${viewingItem.path}?`)) deleteItem(id); }} onMove={(id, col) => moveItem(id, col)} />}
-        {(editingItem || showAdd) && <ItemEditModal item={editingItem} existingPaths={existingPaths} onSave={saveItem} onClose={() => { setEditingItem(null); setShowAdd(false); }} />}
+        {viewingItem && <TaskDetailModal item={viewingItem} labels={labels} onClose={() => setViewingItem(null)} onEdit={() => { setEditingItem(viewingItem); setViewingItem(null); }} onDelete={(id) => { if (confirm(`Delete ${workstreamLabel.toLowerCase()} ${viewingItem.path}?`)) deleteItem(id); }} onMove={(id, col) => moveItem(id, col)} />}
+        {(editingItem || showAdd) && <ItemEditModal item={editingItem} labels={labels} existingPaths={existingPaths} onSave={saveItem} onClose={() => { setEditingItem(null); setShowAdd(false); }} />}
 
         {showAbout && (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50" onClick={() => setShowAbout(false)}>
@@ -892,7 +897,7 @@ export default function App() {
                 <p><strong>Section collapse:</strong> Click any tier header inside a column to collapse/expand that section. Collapsed state persists per session (not saved to disk).</p>
                 <p><strong>Filter by tier:</strong> Use the Release Tier filter to focus on just one tier across all columns.</p>
                 <p><strong>Backups:</strong> click Backup whenever you want a restore point. Stored in <code className="text-blue-300">backups/</code>.</p>
-                <p><strong>Sync to Chat:</strong> click button to copy active-state summary to clipboard. Drag-drop state.json into chat for full state.</p>
+                <p><strong>Sync to Chat:</strong> click button to copy active-state summary to clipboard. Export JSON when a full state handoff is needed.</p>
                 <p className="text-slate-500"><strong>Local project-planning tool only.</strong> Not a hosted service; do not expose it to an untrusted network.</p>
               </div>
               <div className="mt-4 flex justify-end">
@@ -927,7 +932,7 @@ export default function App() {
         {showBulkRound && (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50" onClick={() => setShowBulkRound(false)}>
             <div className="bg-slate-900 border border-slate-700 rounded-lg max-w-md w-full p-4" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center justify-between mb-3"><h2 className="text-base font-bold">Set candidate sprint for {selectedIds.length} items</h2><button onClick={() => setShowBulkRound(false)} className="text-slate-400 hover:text-slate-200"><X size={18} /></button></div>
+              <div className="flex items-center justify-between mb-3"><h2 className="text-base font-bold">Set candidate {cycleNoun} for {selectedIds.length} items</h2><button onClick={() => setShowBulkRound(false)} className="text-slate-400 hover:text-slate-200"><X size={18} /></button></div>
               <input type="text" value={bulkRoundValue} onChange={e => setBulkRoundValue(e.target.value)} placeholder={`e.g. ${sprintBoard.nextRound}`} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm mb-3" autoFocus />
               <div className="flex items-center gap-2 mb-3 text-[10px] text-slate-500">
                 Quick set:
@@ -985,7 +990,10 @@ export default function App() {
   );
 }
 
-function TaskDetailModal({ item, onClose, onEdit, onDelete, onMove }) {
+function TaskDetailModal({ item, labels = DEFAULT_APP_CONFIG.labels, onClose, onEdit, onDelete, onMove }) {
+  const workstreamLabel = labels.workstream || 'Workstream';
+  const cycleLabel = labels.cycle || 'Sprint';
+  const cycleNoun = cycleLabel.toLowerCase();
   const stale = getStaleInfo(item);
   const tier = RELEASE_TIERS.find(t => t.id === item.releaseTier) || RELEASE_TIERS[0];
   return (
@@ -994,7 +1002,7 @@ function TaskDetailModal({ item, onClose, onEdit, onDelete, onMove }) {
         <div className="flex items-start justify-between p-4 border-b border-slate-800">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap mb-1.5">
-              <span className="text-xs font-mono font-bold text-blue-300 bg-blue-900/30 px-2 py-0.5 rounded">Workstream {item.path}</span>
+              <span className="text-xs font-mono font-bold text-blue-300 bg-blue-900/30 px-2 py-0.5 rounded">{workstreamLabel} {item.path}</span>
               {item.reserved && <span className="flex items-center gap-1 text-xs text-amber-400 bg-amber-900/30 px-2 py-0.5 rounded"><Lock size={10} />RESERVED</span>}
               <span className={`text-xs px-2 py-0.5 rounded ${SEVERITY_COLORS[item.severity]}`}>{item.severity}</span>
               <span className="text-xs text-slate-400 bg-slate-800 px-2 py-0.5 rounded">{item.size} - {SIZE_LABELS[item.size]}</span>
@@ -1010,8 +1018,8 @@ function TaskDetailModal({ item, onClose, onEdit, onDelete, onMove }) {
           <div className="grid grid-cols-2 gap-3 text-xs">
             <div><div className="text-slate-500 mb-0.5 flex items-center gap-1"><Tag size={11} />Source</div><div className="text-slate-200">{item.source}</div></div>
             <div><div className="text-slate-500 mb-0.5 flex items-center gap-1"><Tag size={11} />Column</div><select value={item.column} onChange={(e) => onMove(item.id, e.target.value)} className="bg-slate-800 border border-slate-700 rounded px-2 py-0.5 text-slate-200">{COLUMNS.map(c => <option key={c}>{c}</option>)}</select></div>
-            <div><div className="text-slate-500 mb-0.5 flex items-center gap-1"><Calendar size={11} />Candidate sprint</div><div className="text-blue-300">{item.candidateRound || <span className="italic text-slate-500">unassigned</span>}</div></div>
-            <div><div className="text-slate-500 mb-0.5 flex items-center gap-1"><Calendar size={11} />Actual sprint</div><div className="text-green-400">{item.actualRound || <span className="italic text-slate-500">-</span>}</div></div>
+            <div><div className="text-slate-500 mb-0.5 flex items-center gap-1"><Calendar size={11} />Candidate {cycleNoun}</div><div className="text-blue-300">{item.candidateRound || <span className="italic text-slate-500">unassigned</span>}</div></div>
+            <div><div className="text-slate-500 mb-0.5 flex items-center gap-1"><Calendar size={11} />Actual {cycleNoun}</div><div className="text-green-400">{item.actualRound || <span className="italic text-slate-500">-</span>}</div></div>
           </div>
           <div><div className="text-xs text-slate-500 mb-1 flex items-center gap-1"><FileText size={12} />Notes</div><div className="text-slate-200 whitespace-pre-wrap leading-relaxed bg-slate-950/50 border border-slate-800 rounded p-2 text-xs">{item.notes || <span className="italic text-slate-500">(none)</span>}</div></div>
           <div className="grid grid-cols-3 gap-3 text-[10px] text-slate-500 pt-2 border-t border-slate-800">
@@ -1029,23 +1037,26 @@ function TaskDetailModal({ item, onClose, onEdit, onDelete, onMove }) {
   );
 }
 
-function ItemEditModal({ item, existingPaths, onSave, onClose }) {
+function ItemEditModal({ item, labels = DEFAULT_APP_CONFIG.labels, existingPaths, onSave, onClose }) {
   const suggestedWorkstream = item ? null : suggestNextPath(existingPaths);
+  const workstreamLabel = labels.workstream || 'Workstream';
+  const cycleLabel = labels.cycle || 'Sprint';
+  const cycleNoun = cycleLabel.toLowerCase();
   const [form, setForm] = useState(item || {
     path: '', title: '', description: '', column: 'To Do', severity: 'Medium', size: 'M',
     source: 'User', candidateRound: '', actualRound: '', reserved: false, notes: '', releaseTier: 'core_release'
   });
   function submit() {
-    if (!form.path.trim() || !form.title.trim()) { alert('Workstream and Title are required.'); return; }
+    if (!form.path.trim() || !form.title.trim()) { alert(`${workstreamLabel} and Title are required.`); return; }
     onSave(form);
   }
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
       <div className="bg-slate-900 border border-slate-700 rounded-lg max-w-2xl w-full max-h-[90vh] flex flex-col">
-        <div className="flex items-center justify-between p-3 border-b border-slate-800"><h2 className="text-base font-bold">{item ? `Edit workstream ${item.path}` : 'Add Item'}</h2><button onClick={onClose} className="text-slate-400 hover:text-slate-200"><X size={18} /></button></div>
+        <div className="flex items-center justify-between p-3 border-b border-slate-800"><h2 className="text-base font-bold">{item ? `Edit ${workstreamLabel.toLowerCase()} ${item.path}` : 'Add Item'}</h2><button onClick={onClose} className="text-slate-400 hover:text-slate-200"><X size={18} /></button></div>
         <div className="p-3 overflow-y-auto flex-1 space-y-2 text-xs">
           <div className="grid grid-cols-3 gap-2">
-            <div><label className="block text-slate-500 mb-0.5">Workstream *</label>
+            <div><label className="block text-slate-500 mb-0.5">{workstreamLabel} *</label>
               <input type="text" value={form.path} onChange={e => setForm({ ...form, path: e.target.value })} placeholder={suggestedWorkstream ? `e.g. ${suggestedWorkstream}` : 'e.g. A'} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1" />
               {suggestedWorkstream && !form.path && <button onClick={() => setForm({ ...form, path: suggestedWorkstream })} className="text-[10px] text-blue-400 hover:underline mt-0.5">Use suggested: {suggestedWorkstream}</button>}
             </div>
@@ -1079,11 +1090,11 @@ function ItemEditModal({ item, existingPaths, onSave, onClose }) {
             </div>
           </div>
           <div className="grid grid-cols-2 gap-2">
-            <div><label className="block text-slate-500 mb-0.5">Candidate sprint</label>
-              <input type="text" value={form.candidateRound || ''} onChange={e => setForm({ ...form, candidateRound: e.target.value })} placeholder="e.g. Sprint 2" className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1" />
+            <div><label className="block text-slate-500 mb-0.5">Candidate {cycleNoun}</label>
+              <input type="text" value={form.candidateRound || ''} onChange={e => setForm({ ...form, candidateRound: e.target.value })} placeholder={`e.g. ${cycleLabel} 2`} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1" />
             </div>
-            <div><label className="block text-slate-500 mb-0.5">Actual sprint</label>
-              <input type="text" value={form.actualRound || ''} onChange={e => setForm({ ...form, actualRound: e.target.value })} placeholder="e.g. Sprint 2" className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1" />
+            <div><label className="block text-slate-500 mb-0.5">Actual {cycleNoun}</label>
+              <input type="text" value={form.actualRound || ''} onChange={e => setForm({ ...form, actualRound: e.target.value })} placeholder={`e.g. ${cycleLabel} 2`} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1" />
             </div>
           </div>
           <div><label className="block text-slate-500 mb-0.5">Source</label>

@@ -8,6 +8,7 @@ It is designed for private project planning, not as a hosted multi-user service.
 
 - Local kanban board with To Do, Doing, In Review, Blocked, and Done columns
 - Tiered sections for Core Release, Post Release, and Future Content
+- Configurable project title and visible labels for workstreams and cycles
 - Sprint board for last/current/next cycle notes
 - One-click "Sync to Chat" summary copied to your clipboard
 - JSON export/import for full-state handoff or migration
@@ -26,6 +27,8 @@ The dev command starts:
 - Vite UI: `http://localhost:5173`
 - Express API: `http://localhost:5174`
 
+If the browser does not open automatically, navigate to `http://localhost:5173`.
+
 To run beside another local app, override ports before starting:
 
 ```powershell
@@ -34,16 +37,23 @@ $env:AGENT_BOARD_API_PORT=5274
 npm run dev
 ```
 
-If the browser does not open automatically, navigate to `http://localhost:5173`.
+## First Run
+
+On first run, the server creates local files from the committed examples:
+
+- `config.example.json` -> `config.json`
+- `sample.state.json` -> `state.json`
+
+The generated `config.json`, `state.json`, and `backups/` folder are ignored by Git. They are your local working data.
 
 ## Local Files
 
 Committed starter files:
 
 - `sample.state.json` - fake demo board used for first-run bootstrap
-- `config.example.json` - editable project-name and label starter config
+- `config.example.json` - starter project-name and label config
 
-Local ignored files created on first run:
+Local ignored files:
 
 - `state.json` - your real board data
 - `config.json` - your local project config
@@ -57,7 +67,7 @@ Start the app once, then edit `config.json`:
 
 ```json
 {
-  "projectName": "My Project Board",
+  "projectName": "Website Redesign Board",
   "labels": {
     "workstream": "Area",
     "cycle": "Milestone"
@@ -65,9 +75,19 @@ Start the app once, then edit `config.json`:
 }
 ```
 
-Then refresh the browser.
+Refresh the browser after editing. `projectName` changes the app title. `labels.workstream` and `labels.cycle` update visible UI labels and the Sync to Chat summary.
 
 For deeper changes, edit `src/App.jsx` constants such as columns, tiers, and source legend. Those are intentionally small and near the top of the file.
+
+## Resetting The Demo Data
+
+To return local data to the committed examples:
+
+```powershell
+npm run reset:sample
+```
+
+This backs up existing `state.json` and `config.json` into `backups/`, then restores them from `sample.state.json` and `config.example.json`.
 
 ## Backups
 
@@ -79,7 +99,9 @@ Use `Export` to download a full JSON copy of the board. Use `Import` to replace 
 
 ## Chat Handoffs
 
-Use `Sync to Chat` to copy a compact status summary. It includes counts, sprint notes, active work, blocked work, recent completions, and top unblocked tasks.
+Use `Sync to Chat` to copy a compact status summary. It includes counts, cycle notes, active work, blocked work, recent completions, and top unblocked tasks.
+
+For a complete handoff, use `Export` and share the downloaded JSON file.
 
 ## Security Model
 

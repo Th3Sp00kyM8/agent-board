@@ -1,8 +1,8 @@
 {
-    "projectName":  "Agent Board",
-    "labels":  {
-                   "workstream":  "Workstream",
-                   "cycle":  "Sprint"
-               },
-    "notes":  "Copy this file to config.json or let the server create config.json on first run. Edit config.json for your local project."
+  "projectName": "Agent Board",
+  "labels": {
+    "workstream": "Workstream",
+    "cycle": "Sprint"
+  },
+  "notes": "Local project name and visible labels. Edit config.json after first run; keep real project data out of Git."
 }
