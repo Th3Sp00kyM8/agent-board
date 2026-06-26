@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+.DS_Store
+Thumbs.db
+state.json
+state.json.tmp
+config.json
+config.json.tmp
+backups/
+*.log

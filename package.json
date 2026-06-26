@@ -1,0 +1,27 @@
+{
+    "version": "0.1.0",
+    "dependencies": {
+        "express": "^4.21.0",
+        "lucide-react": "^0.383.0",
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1"
+    },
+    "name": "agent-board",
+    "type": "module",
+    "private": true,
+    "scripts": {
+        "preview": "vite preview",
+        "server": "node server.js",
+        "build": "vite build",
+        "dev": "concurrently --kill-others -n server,vite -c blue,green \"node server.js\" \"vite\""
+    },
+    "devDependencies": {
+        "@vitejs/plugin-react": "^6.0.3",
+        "autoprefixer": "^10.4.20",
+        "concurrently": "^9.0.1",
+        "postcss": "^8.4.47",
+        "tailwindcss": "^3.4.13",
+        "vite": "^8.1.0"
+    },
+    "description": "Local-first kanban board for coordinating human and AI project work."
+}
