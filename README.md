@@ -107,6 +107,13 @@ For a complete handoff, use `Export` and share the downloaded JSON file.
 
 Agent Board is an unauthenticated localhost tool. Do not expose ports `5173` or `5174` to a network you do not trust.
 
+## Project Docs
+
+- [Adapting Agent Board For Your Project](docs/ADAPTING.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security Policy](SECURITY.md)
+- [Changelog](CHANGELOG.md)
+
 ## Development
 
 ```powershell

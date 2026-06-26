@@ -3,7 +3,18 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "license": "MIT",
   "description": "Local-first kanban board for coordinating human and AI project work.",
+  "keywords": [
+    "kanban",
+    "local-first",
+    "project-management",
+    "ai-workflow",
+    "planning"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "concurrently --kill-others -n server,vite -c blue,green \"node server.js\" \"vite\"",
     "server": "node server.js",
