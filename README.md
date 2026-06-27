@@ -45,6 +45,12 @@ $env:AGENT_BOARD_API_PORT=5274
 npm run dev
 ```
 
+## Use As A Template
+
+On GitHub, click `Use this template` to create a new project board from Agent Board without linking your new repository history to this repo. Use a fork only when you want to contribute changes back here.
+
+See [Using Agent Board As A Template](docs/TEMPLATE_USE.md) for the recommended paths.
+
 ## First Run
 
 On first run, the server creates local files from the committed examples:
@@ -119,6 +125,7 @@ Agent Board is an unauthenticated localhost tool. Do not expose ports `5173` or 
 
 ## Project Docs
 
+- [Using Agent Board As A Template](docs/TEMPLATE_USE.md)
 - [Adapting Agent Board For Your Project](docs/ADAPTING.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security Policy](SECURITY.md)

@@ -185,6 +185,7 @@ function verifyReleaseAssets() {
   }
   expect(fs.existsSync(path.join(root, 'docs', 'RELEASE.md')), 'docs/RELEASE.md is missing.');
   expect(fs.existsSync(path.join(root, 'docs', 'PUBLISHING.md')), 'docs/PUBLISHING.md is missing.');
+  expect(fs.existsSync(path.join(root, 'docs', 'TEMPLATE_USE.md')), 'docs/TEMPLATE_USE.md is missing.');
   expect(fs.existsSync(path.join(root, '.gitattributes')), '.gitattributes is missing.');
   expect(fs.existsSync(path.join(root, '.editorconfig')), '.editorconfig is missing.');
   const dependabotPath = path.join(root, '.github', 'dependabot.yml');
@@ -200,6 +201,7 @@ function verifyReleaseAssets() {
   expect(readme.includes('git clone https://github.com/Th3Sp00kyM8/agent-board.git'), 'README Quick Start should include the public clone URL.');
   expect(readme.includes('docs/RELEASE.md'), 'README should link to docs/RELEASE.md.');
   expect(readme.includes('docs/PUBLISHING.md'), 'README should link to docs/PUBLISHING.md.');
+  expect(readme.includes('docs/TEMPLATE_USE.md'), 'README should link to docs/TEMPLATE_USE.md.');
 }
 
 verifyPackage();

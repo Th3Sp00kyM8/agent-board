@@ -11,6 +11,7 @@ Recommended GitHub fields:
 - Website: leave blank unless you deploy docs later
 - Topics: `kanban`, `local-first`, `project-management`, `ai-workflow`, `planning`, `react`, `vite`
 - Visibility: public if you are ready for others to fork it
+- Enable `Template repository` in repository settings if you want others to create clean project boards from it
 
 ## 2. Check The Local Repo
 
