@@ -8,6 +8,7 @@
 
 ## Verification
 
+- [ ] `npm run verify`
 - [ ] `npm run build`
 - [ ] `npm audit --audit-level=moderate`
 - [ ] Checked that no real `state.json`, `config.json`, backups, logs, or secrets are included

@@ -33,6 +33,7 @@ npm run dev
 Before opening a pull request, run:
 
 ```powershell
+npm run verify
 npm run build
 npm audit --audit-level=moderate
 ```

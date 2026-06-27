@@ -117,8 +117,11 @@ Agent Board is an unauthenticated localhost tool. Do not expose ports `5173` or 
 ## Development
 
 ```powershell
+npm run verify
 npm run build
 npm run preview
 ```
 
 The app is intentionally simple: React + Vite frontend, Express backend, JSON files on disk.
+
+GitHub Actions runs `npm ci`, `npm run verify`, `npm run build`, and `npm audit --audit-level=moderate` on pushes and pull requests.

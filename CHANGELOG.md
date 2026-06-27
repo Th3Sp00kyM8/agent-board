@@ -16,6 +16,8 @@ The format is based on Keep a Changelog, and this project uses simple `0.x` vers
 - Configurable project title and visible workstream/cycle labels
 - `npm run reset:sample` to restore local demo data after backing up current local files
 - Open-source support docs, issue templates, and contribution guidance
+- `npm run verify` for sample/config validation and local-only file checks
+- GitHub Actions CI for verify, build, and dependency audit
 
 ### Security
 
