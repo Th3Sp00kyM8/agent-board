@@ -261,6 +261,9 @@ function verifyReleaseAssets() {
   expect(readme.includes('Command palette'), 'README should document the command palette.');
   expect(readme.includes('Keyboard Workflow'), 'README should document keyboard workflow.');
   expect(readme.includes('Alt+Arrow'), 'README should document keyboard card movement.');
+  expect(readme.includes('Recent commands'), 'README should document command recents.');
+  expect(readme.includes('shortcut can be changed'), 'README should document configurable shortcut preference.');
+  expect(readme.includes('import preview'), 'README should document import preview.');
   expect(readme.includes('Focus Dashboard'), 'README should document the Focus Dashboard feature.');
   expect(readme.includes('Project Map'), 'README should document the Project Map feature.');
   expect(readme.includes('schemaVersion'), 'README should document board schema metadata.');

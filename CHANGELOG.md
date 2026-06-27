@@ -4,6 +4,19 @@ All notable changes to Agent Board will be documented in this file.
 
 The format is based on Keep a Changelog, and this project uses simple `0.x` versions while the tool is early.
 
+## [0.7.0] - 2026-06-27
+
+### Added
+
+- Recent command shortcuts inside the command palette
+- Configurable command-palette shortcut in Settings, stored locally per browser
+- Import preview modal with current-vs-incoming counts, column distribution, warnings, and incoming item sample
+- Undo snapshot when imported board data replaces the current board
+
+### Changed
+
+- Updated README docs for local command preferences and safer import review
+
 ## [0.6.0] - 2026-06-27
 
 ### Added

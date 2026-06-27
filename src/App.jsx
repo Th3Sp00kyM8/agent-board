@@ -4,6 +4,8 @@ import { Plus, X, Edit2, Trash2, Copy, Download, Upload, Search, AlertTriangle, 
 const BOARD_SCHEMA_VERSION = 2;
 const BOARD_STATE_VERSION = 'agent-board-state-v2';
 const BOARD_APP_ID = 'agent-board';
+const COMMAND_SHORTCUT_KEY = 'agent-board-command-shortcut';
+const COMMAND_RECENTS_KEY = 'agent-board-command-recents';
 const COLUMNS = ['To Do', 'Doing', 'In Review', 'Blocked', 'Done'];
 
 const RELEASE_TIERS = [
@@ -28,6 +30,11 @@ const PROJECT_DOMAINS = [
 const ROADMAP_STAGES = ['Now', 'Next', 'Later', 'Backlog'];
 const RISK_LEVELS = ['None', 'Low', 'Medium', 'High', 'Critical'];
 const DECISION_STATES = ['None', 'Proposed', 'Accepted', 'Rejected', 'Deferred'];
+const COMMAND_SHORTCUTS = [
+  { id: 'mod+k', label: 'Ctrl/Cmd+K', key: 'k' },
+  { id: 'mod+j', label: 'Ctrl/Cmd+J', key: 'j' },
+  { id: 'off', label: 'Off', key: '' },
+];
 
 const DOMAIN_COLORS = {
   Delivery: 'bg-blue-900/40 text-blue-300 border-blue-700/40',
@@ -379,6 +386,35 @@ function deriveAgentStatus(items) {
   return { developer, aiAgent, reviewer };
 }
 
+function loadJsonLocalStorage(key, fallback) {
+  try {
+    const value = window.localStorage?.getItem(key);
+    return value ? JSON.parse(value) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function getShortcutLabel(id) {
+  return COMMAND_SHORTCUTS.find(shortcut => shortcut.id === id)?.label || COMMAND_SHORTCUTS[0].label;
+}
+
+function matchesCommandShortcut(e, shortcutId) {
+  const shortcut = COMMAND_SHORTCUTS.find(option => option.id === shortcutId);
+  if (!shortcut || shortcut.id === 'off') return false;
+  return (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === shortcut.key;
+}
+
+function summarizeItemsForImport(items) {
+  return {
+    total: items.length,
+    columns: Object.fromEntries(COLUMNS.map(column => [column, items.filter(item => item.column === column).length])),
+    risks: items.filter(item => item.riskLevel && item.riskLevel !== 'None' && item.column !== 'Done').length,
+    decisions: items.filter(item => item.decisionStatus && item.decisionStatus !== 'None').length,
+    dependencies: items.reduce((sum, item) => sum + (item.dependencies || []).length, 0),
+  };
+}
+
 function useFocusTrap(active = true) {
   const ref = useRef(null);
   useEffect(() => {
@@ -444,6 +480,8 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showTemplateChooser, setShowTemplateChooser] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [commandShortcut, setCommandShortcut] = useState(() => window.localStorage?.getItem(COMMAND_SHORTCUT_KEY) || 'mod+k');
+  const [recentCommandIds, setRecentCommandIds] = useState(() => loadJsonLocalStorage(COMMAND_RECENTS_KEY, []));
   const [configSaveStatus, setConfigSaveStatus] = useState('idle');
   const [configError, setConfigError] = useState('');
   const [copiedFlag, setCopiedFlag] = useState(false);
@@ -530,7 +568,7 @@ export default function App() {
 
   useEffect(() => {
     function onKey(e) {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+      if (matchesCommandShortcut(e, commandShortcut)) {
         e.preventDefault();
         setShowCommandPalette(true);
         return;
@@ -553,7 +591,7 @@ export default function App() {
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [showCommandPalette, viewingItem, editingItem, showAdd, showExport, showSettings, showTemplateChooser, showResetConfirm, showImportConfirm, showBulkMove, showBulkTier, showBulkRound, showAbout]);
+  }, [commandShortcut, showCommandPalette, viewingItem, editingItem, showAdd, showExport, showSettings, showTemplateChooser, showResetConfirm, showImportConfirm, showBulkMove, showBulkTier, showBulkRound, showAbout]);
 
   function updateScrollState() {
     const c = scrollContainerRef.current;
@@ -826,6 +864,19 @@ export default function App() {
     setFilterSeverity('All');
     setFilterReleaseTier('All');
   }
+  function saveCommandShortcut(nextShortcut) {
+    setCommandShortcut(nextShortcut);
+    window.localStorage?.setItem(COMMAND_SHORTCUT_KEY, nextShortcut);
+  }
+
+  function recordCommandUse(commandId) {
+    setRecentCommandIds(prev => {
+      const next = [commandId, ...prev.filter(id => id !== commandId)].slice(0, 5);
+      window.localStorage?.setItem(COMMAND_RECENTS_KEY, JSON.stringify(next));
+      return next;
+    });
+  }
+
   function closeTemplateChooser() {
     window.localStorage?.setItem('agent-board-template-chooser-seen', '1');
     setShowTemplateChooser(false);
@@ -970,6 +1021,7 @@ export default function App() {
 
   function confirmImport() {
     if (!showImportConfirm) return;
+    pushUndo('Imported board data.');
     setItems(showImportConfirm.items);
     if (showImportConfirm.sprintBoard) setSprintBoard({ ...DEFAULT_SPRINT_BOARD, ...showImportConfirm.sprintBoard });
     setShowImportConfirm(null);
@@ -1097,6 +1149,7 @@ export default function App() {
     { id: 'risks', label: 'Show open risks', detail: `${openRiskItems.length} open risks`, keywords: 'risk danger critical high', icon: <ShieldAlert size={13} />, run: () => { clearFilters(); setSearch('Risk'); } },
     { id: 'sync', label: 'Sync to Chat', detail: 'Copy active-state summary', keywords: 'copy handoff assistant export', icon: <MessageSquare size={13} />, run: syncToChat },
     { id: 'export', label: 'Export', detail: 'Copy summary or download JSON', keywords: 'download json state backup handoff', icon: <Download size={13} />, run: () => setShowExport(true) },
+    { id: 'import', label: 'Import JSON', detail: 'Preview and replace local board data', keywords: 'upload replace migrate json state', icon: <Upload size={13} />, run: () => fileInputRef.current?.click() },
     { id: 'backup', label: 'Backup', detail: 'Create a timestamped restore point', keywords: 'save restore copy state', icon: <Save size={13} />, run: createBackup },
     { id: 'settings', label: 'Settings', detail: 'Project title and labels', keywords: 'project labels config', icon: <Settings size={13} />, run: openSettings },
     { id: 'reset', label: 'Reset board', detail: 'Clear local state after confirmation', keywords: 'wipe clear empty start over', icon: <RotateCcw size={13} />, run: () => setShowResetConfirm(true) },
@@ -1134,7 +1187,7 @@ export default function App() {
               <button onClick={() => scrollByColumn(-1)} disabled={!canScrollLeft} className={`px-2 py-1 rounded text-xs flex items-center gap-1 ${canScrollLeft ? 'bg-slate-800 hover:bg-slate-700' : 'bg-slate-900 text-slate-600 cursor-not-allowed'}`}><ChevronLeft size={12} /></button>
               <button onClick={() => scrollByColumn(1)} disabled={!canScrollRight} className={`px-2 py-1 rounded text-xs flex items-center gap-1 ${canScrollRight ? 'bg-slate-800 hover:bg-slate-700' : 'bg-slate-900 text-slate-600 cursor-not-allowed'}`}><ChevronRight size={12} /></button>
               <div className="w-px h-4 bg-slate-700 mx-1" />
-              <button onClick={() => setShowCommandPalette(true)} className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded text-xs flex items-center gap-1" title="Open command palette (Ctrl+K)"><Command size={12} />Commands</button>
+              <button onClick={() => setShowCommandPalette(true)} className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded text-xs flex items-center gap-1" title={`Open command palette (${getShortcutLabel(commandShortcut)})`}><Command size={12} />Commands</button>
               <button onClick={() => setShowAdd(true)} className="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 rounded text-xs flex items-center gap-1"><Plus size={12} />Add</button>
               <button onClick={() => setShowFilters(!showFilters)} className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded text-xs flex items-center gap-1">{showFilters ? <ChevronDown size={12} /> : <ChevronRight size={12} />}Filters</button>
               <button onClick={syncToChat} className={`px-2.5 py-1 rounded text-xs flex items-center gap-1 transition-colors ${syncFlag ? 'bg-green-700' : 'bg-emerald-700 hover:bg-emerald-600'}`} title="Copy active-state summary to clipboard for pasting to Chat">
@@ -1503,10 +1556,10 @@ export default function App() {
           </div>
         )}
 
-        {showCommandPalette && <CommandPalette actions={commandActions} items={items} workstreamLabel={workstreamLabel} onOpenItem={setViewingItem} onClose={() => setShowCommandPalette(false)} />}
+        {showCommandPalette && <CommandPalette actions={commandActions} recentCommandIds={recentCommandIds} onCommandRun={recordCommandUse} items={items} workstreamLabel={workstreamLabel} shortcutLabel={getShortcutLabel(commandShortcut)} onOpenItem={setViewingItem} onClose={() => setShowCommandPalette(false)} />}
         {viewingItem && <TaskDetailModal item={viewingItem} labels={labels} onClose={() => setViewingItem(null)} onEdit={() => { setEditingItem(viewingItem); setViewingItem(null); }} onDelete={(id) => { if (confirm(`Delete ${workstreamLabel.toLowerCase()} ${viewingItem.path}?`)) deleteItem(id); }} onMove={(id, col) => moveItem(id, col)} />}
         {(editingItem || showAdd) && <ItemEditModal item={editingItem} labels={labels} existingPaths={existingPaths} onSave={saveItem} onClose={() => { setEditingItem(null); setShowAdd(false); }} />}
-        {showSettings && <SettingsModal config={appConfig} status={configSaveStatus} error={configError} onSave={saveAppConfig} onClose={() => setShowSettings(false)} />}
+        {showSettings && <SettingsModal config={appConfig} commandShortcut={commandShortcut} status={configSaveStatus} error={configError} onShortcutChange={saveCommandShortcut} onSave={saveAppConfig} onClose={() => setShowSettings(false)} />}
         {showTemplateChooser && <TemplateChooserModal templates={BOARD_TEMPLATES} currentCount={items.length} onApply={applyTemplate} onClose={closeTemplateChooser} />}
 
         {showAbout && (
@@ -1570,17 +1623,7 @@ export default function App() {
           </div>
         )}
 
-        {showImportConfirm && (
-          <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50" onClick={() => setShowImportConfirm(null)}>
-            <div className="bg-slate-900 border border-amber-700 rounded-lg max-w-md w-full p-4" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center gap-2 mb-2 text-amber-400"><AlertTriangle size={18} /><h2 className="text-base font-bold">Replace current data?</h2></div>
-              <p className="text-xs text-slate-400 mb-2">Imported file has <strong className="text-slate-200">{showImportConfirm.items.length} items</strong>{showImportConfirm.sprintBoard ? ' and sprint board state' : ''}. This will replace your current backlog ({items.length} items) on disk. Consider creating a Backup first.</p>
-              <div className="text-[10px] text-slate-500 bg-slate-950/60 border border-slate-800 rounded p-2 mb-2">Source: {showImportConfirm.sourceVersion || 'unknown'} / schema {showImportConfirm.schemaVersion || 'legacy'}</div>
-              {showImportConfirm.warnings?.length > 0 && <div className="text-[11px] text-amber-300 bg-amber-950/30 border border-amber-900/50 rounded p-2 mb-3 space-y-1">{showImportConfirm.warnings.map(w => <div key={w}>- {w}</div>)}</div>}
-              <div className="flex gap-2 justify-end"><button onClick={() => setShowImportConfirm(null)} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded text-xs">Cancel</button><button onClick={confirmImport} className="px-3 py-1.5 bg-amber-700 hover:bg-amber-600 rounded text-xs">Replace with import</button></div>
-            </div>
-          </div>
-        )}
+        {showImportConfirm && <ImportConfirmModal imported={showImportConfirm} currentItems={items} onCancel={() => setShowImportConfirm(null)} onConfirm={confirmImport} />}
 
         {showExport && (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
@@ -1617,10 +1660,88 @@ export default function App() {
   );
 }
 
-function CommandPalette({ actions, items, workstreamLabel, onOpenItem, onClose }) {
+function ImportConfirmModal({ imported, currentItems, onCancel, onConfirm }) {
+  const modalRef = useFocusTrap(true);
+  const current = summarizeItemsForImport(currentItems);
+  const incoming = summarizeItemsForImport(imported.items);
+  const previewItems = imported.items.slice(0, 5);
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50" role="dialog" aria-modal="true" aria-label="Preview import replacement" onClick={onCancel}>
+      <div ref={modalRef} className="bg-slate-900 border border-amber-700 rounded-lg max-w-3xl w-full max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-4 border-b border-slate-800">
+          <div className="flex items-center gap-2 text-amber-400"><AlertTriangle size={18} /><h2 className="text-base font-bold">Preview import replacement</h2></div>
+          <button onClick={onCancel} className="text-slate-400 hover:text-slate-200" aria-label="Cancel import"><X size={18} /></button>
+        </div>
+        <div className="p-4 overflow-y-auto flex-1 text-xs space-y-3">
+          <div className="text-slate-400">This import will replace your current local board. Create a backup first if the current board matters.</div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="bg-slate-950/50 border border-slate-800 rounded p-3">
+              <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">Current Board</div>
+              <div className="text-2xl font-bold text-slate-100">{current.total}</div>
+              <div className="text-[10px] text-slate-500 mb-2">items will be replaced</div>
+              <ImportSummary summary={current} />
+            </div>
+            <div className="bg-amber-950/20 border border-amber-900/50 rounded p-3">
+              <div className="text-[10px] uppercase tracking-wider text-amber-500 mb-2">Incoming Board</div>
+              <div className="text-2xl font-bold text-amber-100">{incoming.total}</div>
+              <div className="text-[10px] text-amber-400 mb-2">{imported.sprintBoard ? 'includes cycle notes' : 'items only'}</div>
+              <ImportSummary summary={incoming} />
+            </div>
+          </div>
+          <div className="bg-slate-950/50 border border-slate-800 rounded p-2">
+            <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-1">Source</div>
+            <div className="text-slate-300">Version: {imported.sourceVersion || 'unknown'} / schema {imported.schemaVersion || 'legacy'}</div>
+          </div>
+          {imported.warnings?.length > 0 && (
+            <div className="text-[11px] text-amber-300 bg-amber-950/30 border border-amber-900/50 rounded p-2 space-y-1">
+              {imported.warnings.map(w => <div key={w}>- {w}</div>)}
+            </div>
+          )}
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-1">Incoming Preview</div>
+            <div className="space-y-1">
+              {previewItems.map(item => (
+                <div key={item.id} className="bg-slate-950/50 border border-slate-800 rounded px-2 py-1 flex items-center gap-2">
+                  <span className="font-mono text-[10px] text-blue-300 bg-blue-900/30 px-1.5 py-0.5 rounded">{item.path}</span>
+                  <span className="text-slate-200 truncate flex-1">{item.title}</span>
+                  <span className="text-[10px] text-slate-500">{item.column}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="p-4 border-t border-slate-800 flex gap-2 justify-end">
+          <button onClick={onCancel} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded text-xs">Cancel</button>
+          <button onClick={onConfirm} className="px-3 py-1.5 bg-amber-700 hover:bg-amber-600 rounded text-xs">Replace with import</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ImportSummary({ summary }) {
+  return (
+    <div className="space-y-1 text-[10px] text-slate-400">
+      <div className="grid grid-cols-5 gap-1">
+        {COLUMNS.map(column => <div key={column} className="bg-slate-900/70 border border-slate-800 rounded p-1 text-center"><div className="text-slate-100 font-semibold">{summary.columns[column]}</div><div className="truncate">{column}</div></div>)}
+      </div>
+      <div className="flex flex-wrap gap-1 pt-1">
+        <span className="px-1.5 py-0.5 rounded bg-red-950/30 text-red-300 border border-red-900/50">{summary.risks} open risks</span>
+        <span className="px-1.5 py-0.5 rounded bg-amber-950/30 text-amber-300 border border-amber-900/50">{summary.decisions} decisions</span>
+        <span className="px-1.5 py-0.5 rounded bg-cyan-950/30 text-cyan-300 border border-cyan-900/50">{summary.dependencies} dependencies</span>
+      </div>
+    </div>
+  );
+}
+
+function CommandPalette({ actions, recentCommandIds = [], onCommandRun, items, workstreamLabel, shortcutLabel, onOpenItem, onClose }) {
   const modalRef = useFocusTrap(true);
   const [query, setQuery] = useState('');
   const normalizedQuery = query.trim().toLowerCase();
+  const recentActions = recentCommandIds
+    .map(id => actions.find(action => action.id === id))
+    .filter(Boolean)
+    .slice(0, 5);
   const actionResults = actions.filter(action => {
     if (!normalizedQuery) return true;
     return [action.label, action.detail, action.keywords].join(' ').toLowerCase().includes(normalizedQuery);
@@ -1631,6 +1752,7 @@ function CommandPalette({ actions, items, workstreamLabel, onOpenItem, onClose }
   }).slice(0, 8);
   function runAction(action) {
     onClose();
+    onCommandRun?.(action.id);
     action.run();
   }
   function openItem(item) {
@@ -1643,10 +1765,23 @@ function CommandPalette({ actions, items, workstreamLabel, onOpenItem, onClose }
         <div className="flex items-center gap-2 px-3 py-3 border-b border-slate-800">
           <Command size={16} className="text-blue-400 flex-shrink-0" />
           <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search commands or jump to work..." className="flex-1 bg-transparent outline-none text-sm text-slate-100 placeholder-slate-500" autoFocus />
+          <div className="hidden sm:flex items-center gap-1 text-[10px] text-slate-500 border border-slate-700 rounded px-1.5 py-0.5">{shortcutLabel}</div>
           <div className="hidden sm:flex items-center gap-1 text-[10px] text-slate-500 border border-slate-700 rounded px-1.5 py-0.5"><CornerDownLeft size={10} />run</div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-200" aria-label="Close command palette"><X size={16} /></button>
         </div>
         <div className="max-h-[60vh] overflow-y-auto tk-vscroll p-2 text-xs">
+          {!normalizedQuery && recentActions.length > 0 && (
+            <div className="mb-2">
+              <div className="text-[10px] uppercase tracking-wider text-slate-500 px-2 py-1">Recent</div>
+              <div className="flex flex-wrap gap-1.5">
+                {recentActions.map(action => (
+                  <button key={action.id} onClick={() => runAction(action)} className="px-2 py-1 rounded bg-blue-950/30 hover:bg-blue-900/40 border border-blue-800/40 text-blue-200 flex items-center gap-1">
+                    {action.icon}<span>{action.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           {actionResults.length > 0 && (
             <div className="mb-2">
               <div className="text-[10px] uppercase tracking-wider text-slate-500 px-2 py-1">Actions</div>
@@ -1784,16 +1919,18 @@ function DashboardList({ title, items, emptyText, accent, onOpen, metaFor }) {
   );
 }
 
-function SettingsModal({ config, status, error, onSave, onClose }) {
+function SettingsModal({ config, commandShortcut, status, error, onShortcutChange, onSave, onClose }) {
   const modalRef = useFocusTrap(true);
   const [form, setForm] = useState({
     projectName: config.projectName || DEFAULT_APP_CONFIG.projectName,
     workstream: config.labels?.workstream || DEFAULT_APP_CONFIG.labels.workstream,
     cycle: config.labels?.cycle || DEFAULT_APP_CONFIG.labels.cycle,
+    commandShortcut,
   });
   const canSave = form.projectName.trim() && form.workstream.trim() && form.cycle.trim() && status !== 'saving';
   function submit() {
     if (!canSave) return;
+    onShortcutChange(form.commandShortcut);
     onSave({
       ...config,
       projectName: form.projectName,
@@ -1826,9 +1963,17 @@ function SettingsModal({ config, status, error, onSave, onClose }) {
               <input type="text" value={form.cycle} onChange={e => setForm({ ...form, cycle: e.target.value })} placeholder="Sprint" className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5" />
             </div>
           </div>
+          <div>
+            <label className="block text-slate-500 mb-1">Command palette shortcut</label>
+            <select value={form.commandShortcut} onChange={e => setForm({ ...form, commandShortcut: e.target.value })} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5">
+              {COMMAND_SHORTCUTS.map(shortcut => <option key={shortcut.id} value={shortcut.id}>{shortcut.label}</option>)}
+            </select>
+            <div className="text-[10px] text-slate-500 mt-1">Saved locally in this browser, not in project files.</div>
+          </div>
           <div className="bg-slate-950/60 border border-slate-800 rounded p-2 text-[10px] text-slate-400 space-y-1">
             <div><span className="text-slate-500">Title:</span> {(form.projectName || DEFAULT_APP_CONFIG.projectName).toUpperCase()}</div>
             <div><span className="text-slate-500">Example:</span> {form.workstream || 'Workstream'} A in current {(form.cycle || 'Sprint').toLowerCase()}</div>
+            <div><span className="text-slate-500">Shortcut:</span> {getShortcutLabel(form.commandShortcut)}</div>
           </div>
           {error && <div className="text-[11px] text-red-300 bg-red-950/40 border border-red-900/50 rounded p-2">{error}</div>}
         </div>
