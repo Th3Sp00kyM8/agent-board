@@ -35,6 +35,12 @@ const COMMAND_SHORTCUTS = [
   { id: 'mod+j', label: 'Ctrl/Cmd+J', key: 'j' },
   { id: 'off', label: 'Off', key: '' },
 ];
+const KNOWN_ITEM_FIELDS = [
+  'id', 'path', 'title', 'description', 'column', 'severity', 'size', 'source',
+  'releaseTier', 'candidateRound', 'actualRound', 'reserved', 'notes',
+  'createdAt', 'updatedAt', 'columnEnteredAt', 'domain', 'dependencies',
+  'riskLevel', 'roadmapStage', 'decisionStatus', 'owner',
+];
 
 const DOMAIN_COLORS = {
   Delivery: 'bg-blue-900/40 text-blue-300 border-blue-700/40',
@@ -332,12 +338,78 @@ function normalizeStatePayload(data) {
     throw new Error('expected an items array or an export object with { items, sprintBoard }');
   }
 
+  const validation = validateImportDryRun(data, importedItems, importedSprint);
+  warnings.push(...validation.warnings);
+
   return {
     items: importedItems.map(ensureItemShape),
     sprintBoard: importedSprint,
     schemaVersion,
     sourceVersion,
     warnings,
+    validation,
+  };
+}
+
+function validateImportDryRun(rawData, rawItems, sprintBoard) {
+  const warnings = [];
+  const errors = [];
+  const duplicateIds = new Set();
+  const duplicatePaths = new Set();
+  const seenIds = new Set();
+  const seenPaths = new Set();
+  let unknownFieldCount = 0;
+  let unknownColumnCount = 0;
+  let unknownTierCount = 0;
+  let missingRequiredCount = 0;
+
+  rawItems.forEach((item, index) => {
+    const id = String(item?.id || '').trim();
+    const path = String(item?.path || '').trim();
+    const title = String(item?.title || '').trim();
+    if (!path || !title) missingRequiredCount += 1;
+    if (id) {
+      if (seenIds.has(id)) duplicateIds.add(id);
+      seenIds.add(id);
+    }
+    if (path) {
+      if (seenPaths.has(path.toLowerCase())) duplicatePaths.add(path);
+      seenPaths.add(path.toLowerCase());
+    }
+    if (item?.column && !COLUMNS.includes(item.column)) unknownColumnCount += 1;
+    if (item?.releaseTier && !RELEASE_TIERS.some(tier => tier.id === item.releaseTier)) unknownTierCount += 1;
+    Object.keys(item || {}).forEach(key => {
+      if (!KNOWN_ITEM_FIELDS.includes(key)) unknownFieldCount += 1;
+    });
+    if (!item || typeof item !== 'object' || Array.isArray(item)) errors.push(`Item ${index + 1} is not an object.`);
+  });
+
+  if (missingRequiredCount) errors.push(`${missingRequiredCount} item(s) are missing a path or title.`);
+  if (duplicateIds.size) warnings.push(`Duplicate ids found: ${Array.from(duplicateIds).slice(0, 5).join(', ')}.`);
+  if (duplicatePaths.size) warnings.push(`Duplicate visible paths found: ${Array.from(duplicatePaths).slice(0, 5).join(', ')}.`);
+  if (unknownColumnCount) warnings.push(`${unknownColumnCount} item(s) use unknown columns and may need review after import.`);
+  if (unknownTierCount) warnings.push(`${unknownTierCount} item(s) use unknown release tiers and will fall back on save.`);
+  if (unknownFieldCount) warnings.push(`${unknownFieldCount} custom item field(s) are not shown by this version.`);
+  if (rawData && typeof rawData === 'object' && !Array.isArray(rawData)) {
+    const knownTopLevel = ['app', 'schemaVersion', 'version', 'exportedAt', 'items', 'sprintBoard'];
+    const customTopLevel = Object.keys(rawData).filter(key => !knownTopLevel.includes(key));
+    if (customTopLevel.length) warnings.push(`Custom top-level field(s) will be preserved only if your fork supports them: ${customTopLevel.slice(0, 5).join(', ')}.`);
+  }
+  if (sprintBoard && typeof sprintBoard === 'object') {
+    const unknownSprintKeys = Object.keys(sprintBoard).filter(key => !Object.prototype.hasOwnProperty.call(DEFAULT_SPRINT_BOARD, key));
+    if (unknownSprintKeys.length) warnings.push(`Custom cycle-board field(s) are not shown here: ${unknownSprintKeys.slice(0, 5).join(', ')}.`);
+  }
+
+  return {
+    ok: errors.length === 0,
+    errors,
+    warnings,
+    duplicateIds: duplicateIds.size,
+    duplicatePaths: duplicatePaths.size,
+    unknownFieldCount,
+    unknownColumnCount,
+    unknownTierCount,
+    missingRequiredCount,
   };
 }
 
@@ -413,6 +485,36 @@ function summarizeItemsForImport(items) {
     decisions: items.filter(item => item.decisionStatus && item.decisionStatus !== 'None').length,
     dependencies: items.reduce((sum, item) => sum + (item.dependencies || []).length, 0),
   };
+}
+
+function fuzzyScore(query, text) {
+  const q = query.trim().toLowerCase();
+  if (!q) return 1;
+  const haystack = String(text || '').toLowerCase();
+  if (!haystack) return 0;
+  if (haystack === q) return 120;
+  if (haystack.startsWith(q)) return 100;
+  if (haystack.includes(q)) return 70;
+  const tokens = q.split(/\s+/).filter(Boolean);
+  if (tokens.length && tokens.every(token => haystack.includes(token))) return 50 + tokens.length;
+  let cursor = 0;
+  let matched = 0;
+  for (const char of q) {
+    const index = haystack.indexOf(char, cursor);
+    if (index === -1) break;
+    matched += 1;
+    cursor = index + 1;
+  }
+  return matched === q.length ? 20 + matched : 0;
+}
+
+function rankedMatches(list, query, textForItem, limit) {
+  const q = query.trim().toLowerCase();
+  const scored = list
+    .map(item => ({ item, score: q ? fuzzyScore(q, textForItem(item)) : 1 }))
+    .filter(entry => !q || entry.score > 0)
+    .sort((a, b) => b.score - a.score);
+  return scored.slice(0, limit).map(entry => entry.item);
 }
 
 function useFocusTrap(active = true) {
@@ -500,6 +602,7 @@ export default function App() {
   const [showAbout, setShowAbout] = useState(false);
   const [insightsExpanded, setInsightsExpanded] = useState(true);
   const [undoState, setUndoState] = useState(null);
+  const [focusedItemId, setFocusedItemId] = useState(null);
   // Set of "column:tier" strings indicating collapsed sections
   const [collapsedSections, setCollapsedSections] = useState(() => new Set());
 
@@ -509,6 +612,7 @@ export default function App() {
   const scrollIntervalRef = useRef(null);
   const fileInputRef = useRef(null);
   const initialLoadRef = useRef(true);
+  const cardRefs = useRef({});
 
   useEffect(() => {
     async function load() {
@@ -708,6 +812,10 @@ export default function App() {
   const cycleLabel = labels.cycle || 'Sprint';
   const cycleNoun = cycleLabel.toLowerCase();
   const workstreamName = (item) => `${workstreamLabel} ${item.path}`;
+  const visibleItemsByColumn = COLUMNS.reduce((out, column) => {
+    out[column] = filtered.filter(item => item.column === column);
+    return out;
+  }, {});
   const onboardingSteps = [
     {
       id: 'template',
@@ -917,6 +1025,31 @@ export default function App() {
     setSelectedIds([]);
   }
 
+  function focusItemById(itemId) {
+    if (!itemId) return;
+    setFocusedItemId(itemId);
+    requestAnimationFrame(() => {
+      cardRefs.current[itemId]?.focus();
+    });
+  }
+
+  function focusRelativeItem(item, direction) {
+    const currentColumnIndex = COLUMNS.indexOf(item.column);
+    const currentColumnItems = visibleItemsByColumn[item.column] || [];
+    const currentIndex = currentColumnItems.findIndex(i => i.id === item.id);
+    if (direction === 'up' || direction === 'down') {
+      const nextIndex = currentIndex + (direction === 'down' ? 1 : -1);
+      if (nextIndex >= 0 && nextIndex < currentColumnItems.length) focusItemById(currentColumnItems[nextIndex].id);
+      return;
+    }
+    const nextColumnIndex = currentColumnIndex + (direction === 'right' ? 1 : -1);
+    if (nextColumnIndex < 0 || nextColumnIndex >= COLUMNS.length) return;
+    const targetColumn = COLUMNS[nextColumnIndex];
+    const targetItems = visibleItemsByColumn[targetColumn] || [];
+    const target = targetItems[Math.min(Math.max(currentIndex, 0), targetItems.length - 1)];
+    if (target) focusItemById(target.id);
+  }
+
   function handleCardKeyDown(e, item) {
     if (e.target !== e.currentTarget) return;
     if (e.key === 'Enter') {
@@ -930,6 +1063,9 @@ export default function App() {
       const currentIndex = COLUMNS.indexOf(item.column);
       const nextIndex = currentIndex + (e.key === 'ArrowRight' ? 1 : -1);
       if (nextIndex >= 0 && nextIndex < COLUMNS.length) moveItem(item.id, COLUMNS[nextIndex]);
+    } else if (['ArrowRight', 'ArrowLeft', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+      e.preventDefault();
+      focusRelativeItem(item, e.key.replace('Arrow', '').toLowerCase());
     }
   }
 
@@ -1021,6 +1157,7 @@ export default function App() {
 
   function confirmImport() {
     if (!showImportConfirm) return;
+    if (showImportConfirm.validation && !showImportConfirm.validation.ok) return;
     pushUndo('Imported board data.');
     setItems(showImportConfirm.items);
     if (showImportConfirm.sprintBoard) setSprintBoard({ ...DEFAULT_SPRINT_BOARD, ...showImportConfirm.sprintBoard });
@@ -1141,18 +1278,18 @@ export default function App() {
 
   const existingPaths = items.map(i => i.path);
   const commandActions = [
-    { id: 'add', label: 'Add work', detail: 'Create a new item', keywords: 'new item create task card', icon: <Plus size={13} />, run: () => setShowAdd(true) },
-    { id: 'templates', label: 'Templates', detail: 'Choose a starter workflow', keywords: 'starter sample workflow board', icon: <Palette size={13} />, run: () => setShowTemplateChooser(true) },
-    { id: 'filters', label: showFilters ? 'Hide filters' : 'Show filters', detail: 'Toggle board filters', keywords: 'filter search column severity', icon: <Search size={13} />, run: () => setShowFilters(!showFilters) },
-    { id: 'clear-filters', label: 'Clear filters', detail: 'Return to the full board', keywords: 'reset search all columns', icon: <X size={13} />, run: clearFilters },
-    { id: 'blocked', label: 'Show blocked work', detail: `${blockedItems.length} blocked items`, keywords: 'blocker stuck risk wait', icon: <AlertTriangle size={13} />, run: () => { clearFilters(); setFilterColumn('Blocked'); } },
-    { id: 'risks', label: 'Show open risks', detail: `${openRiskItems.length} open risks`, keywords: 'risk danger critical high', icon: <ShieldAlert size={13} />, run: () => { clearFilters(); setSearch('Risk'); } },
-    { id: 'sync', label: 'Sync to Chat', detail: 'Copy active-state summary', keywords: 'copy handoff assistant export', icon: <MessageSquare size={13} />, run: syncToChat },
-    { id: 'export', label: 'Export', detail: 'Copy summary or download JSON', keywords: 'download json state backup handoff', icon: <Download size={13} />, run: () => setShowExport(true) },
-    { id: 'import', label: 'Import JSON', detail: 'Preview and replace local board data', keywords: 'upload replace migrate json state', icon: <Upload size={13} />, run: () => fileInputRef.current?.click() },
-    { id: 'backup', label: 'Backup', detail: 'Create a timestamped restore point', keywords: 'save restore copy state', icon: <Save size={13} />, run: createBackup },
-    { id: 'settings', label: 'Settings', detail: 'Project title and labels', keywords: 'project labels config', icon: <Settings size={13} />, run: openSettings },
-    { id: 'reset', label: 'Reset board', detail: 'Clear local state after confirmation', keywords: 'wipe clear empty start over', icon: <RotateCcw size={13} />, run: () => setShowResetConfirm(true) },
+    { id: 'add', group: 'Work', label: 'Add work', detail: 'Create a new item', keywords: 'new item create task card', icon: <Plus size={13} />, run: () => setShowAdd(true) },
+    { id: 'templates', group: 'Work', label: 'Templates', detail: 'Choose a starter workflow', keywords: 'starter sample workflow board', icon: <Palette size={13} />, run: () => setShowTemplateChooser(true) },
+    { id: 'filters', group: 'Focus', label: showFilters ? 'Hide filters' : 'Show filters', detail: 'Toggle board filters', keywords: 'filter search column severity', icon: <Search size={13} />, run: () => setShowFilters(!showFilters) },
+    { id: 'clear-filters', group: 'Focus', label: 'Clear filters', detail: 'Return to the full board', keywords: 'reset search all columns', icon: <X size={13} />, run: clearFilters },
+    { id: 'blocked', group: 'Focus', label: 'Show blocked work', detail: `${blockedItems.length} blocked items`, keywords: 'blocker stuck risk wait', icon: <AlertTriangle size={13} />, run: () => { clearFilters(); setFilterColumn('Blocked'); } },
+    { id: 'risks', group: 'Focus', label: 'Show open risks', detail: `${openRiskItems.length} open risks`, keywords: 'risk danger critical high', icon: <ShieldAlert size={13} />, run: () => { clearFilters(); setSearch('Risk'); } },
+    { id: 'sync', group: 'Share', label: 'Sync to Chat', detail: 'Copy active-state summary', keywords: 'copy handoff assistant export', icon: <MessageSquare size={13} />, run: syncToChat },
+    { id: 'export', group: 'Share', label: 'Export', detail: 'Copy summary or download JSON', keywords: 'download json state backup handoff', icon: <Download size={13} />, run: () => setShowExport(true) },
+    { id: 'import', group: 'Share', label: 'Import JSON', detail: 'Preview and replace local board data', keywords: 'upload replace migrate json state', icon: <Upload size={13} />, run: () => fileInputRef.current?.click() },
+    { id: 'backup', group: 'Data', label: 'Backup', detail: 'Create a timestamped restore point', keywords: 'save restore copy state', icon: <Save size={13} />, run: createBackup },
+    { id: 'settings', group: 'Data', label: 'Settings', detail: 'Project title and labels', keywords: 'project labels config', icon: <Settings size={13} />, run: openSettings },
+    { id: 'reset', group: 'Data', label: 'Reset board', detail: 'Clear local state after confirmation', keywords: 'wipe clear empty start over', icon: <RotateCcw size={13} />, run: () => setShowResetConfirm(true) },
   ];
 
   return (
@@ -1457,6 +1594,7 @@ export default function App() {
                                   return (
                                     <div
                                       key={item.id}
+                                      ref={(node) => { if (node) cardRefs.current[item.id] = node; }}
                                       role="button"
                                       tabIndex={0}
                                       aria-label={`${workstreamLabel} ${item.path}: ${item.title}. Press Enter to open, Space to select, Alt plus arrow keys to move.`}
@@ -1464,8 +1602,9 @@ export default function App() {
                                       onDragStart={(e) => { setDragId(item.id); e.stopPropagation(); }}
                                       onDragEnd={() => { setDragId(null); stopAutoScroll(); }}
                                       onClick={() => setViewingItem(item)}
+                                      onFocus={() => setFocusedItemId(item.id)}
                                       onKeyDown={(e) => handleCardKeyDown(e, item)}
-                                      className={`bg-slate-900 border-l-2 ${sourceAccent(item.source)} border-y border-r ${selectedIds.includes(item.id) ? 'border-purple-500' : 'border-slate-800'} ${item.reserved ? 'ring-1 ring-amber-700/40' : ''} rounded p-2 cursor-pointer hover:border-slate-600 transition-colors`}
+                                      className={`bg-slate-900 border-l-2 ${sourceAccent(item.source)} border-y border-r ${selectedIds.includes(item.id) ? 'border-purple-500' : 'border-slate-800'} ${item.reserved ? 'ring-1 ring-amber-700/40' : ''} ${focusedItemId === item.id ? 'ring-2 ring-blue-500/60' : ''} rounded p-2 cursor-pointer hover:border-slate-600 transition-colors`}
                                     >
                                       <div className="flex items-start justify-between gap-1.5 mb-1">
                                         <div className="flex items-center gap-1 flex-wrap">
@@ -1665,6 +1804,7 @@ function ImportConfirmModal({ imported, currentItems, onCancel, onConfirm }) {
   const current = summarizeItemsForImport(currentItems);
   const incoming = summarizeItemsForImport(imported.items);
   const previewItems = imported.items.slice(0, 5);
+  const validation = imported.validation || { ok: true, errors: [], warnings: [] };
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50" role="dialog" aria-modal="true" aria-label="Preview import replacement" onClick={onCancel}>
       <div ref={modalRef} className="bg-slate-900 border border-amber-700 rounded-lg max-w-3xl w-full max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
@@ -1692,6 +1832,14 @@ function ImportConfirmModal({ imported, currentItems, onCancel, onConfirm }) {
             <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-1">Source</div>
             <div className="text-slate-300">Version: {imported.sourceVersion || 'unknown'} / schema {imported.schemaVersion || 'legacy'}</div>
           </div>
+          <div className={`border rounded p-2 ${validation.ok ? 'bg-emerald-950/20 border-emerald-900/50 text-emerald-300' : 'bg-red-950/30 border-red-900/60 text-red-300'}`}>
+            <div className="text-[10px] uppercase tracking-wider mb-1">{validation.ok ? 'Dry Run Passed' : 'Dry Run Blocked'}</div>
+            {validation.ok ? (
+              <div className="text-[11px]">No blocking structure issues found. Review warnings before replacing current data.</div>
+            ) : (
+              <div className="space-y-1 text-[11px]">{validation.errors.map(error => <div key={error}>- {error}</div>)}</div>
+            )}
+          </div>
           {imported.warnings?.length > 0 && (
             <div className="text-[11px] text-amber-300 bg-amber-950/30 border border-amber-900/50 rounded p-2 space-y-1">
               {imported.warnings.map(w => <div key={w}>- {w}</div>)}
@@ -1712,7 +1860,7 @@ function ImportConfirmModal({ imported, currentItems, onCancel, onConfirm }) {
         </div>
         <div className="p-4 border-t border-slate-800 flex gap-2 justify-end">
           <button onClick={onCancel} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded text-xs">Cancel</button>
-          <button onClick={onConfirm} className="px-3 py-1.5 bg-amber-700 hover:bg-amber-600 rounded text-xs">Replace with import</button>
+          <button onClick={onConfirm} disabled={!validation.ok} className={`px-3 py-1.5 rounded text-xs ${validation.ok ? 'bg-amber-700 hover:bg-amber-600' : 'bg-slate-800 text-slate-500 cursor-not-allowed'}`}>Replace with import</button>
         </div>
       </div>
     </div>
@@ -1742,14 +1890,24 @@ function CommandPalette({ actions, recentCommandIds = [], onCommandRun, items, w
     .map(id => actions.find(action => action.id === id))
     .filter(Boolean)
     .slice(0, 5);
-  const actionResults = actions.filter(action => {
-    if (!normalizedQuery) return true;
-    return [action.label, action.detail, action.keywords].join(' ').toLowerCase().includes(normalizedQuery);
-  }).slice(0, normalizedQuery ? 8 : 6);
-  const itemResults = items.filter(item => {
-    if (!normalizedQuery) return false;
-    return [item.path, item.title, item.description, item.owner, item.domain, item.source, item.column, item.severity, item.riskLevel, item.decisionStatus, item.roadmapStage, ...(item.dependencies || [])].join(' ').toLowerCase().includes(normalizedQuery);
-  }).slice(0, 8);
+  const actionResults = rankedMatches(
+    actions,
+    normalizedQuery,
+    action => [action.label, action.detail, action.keywords, action.group].join(' '),
+    normalizedQuery ? 10 : 8
+  );
+  const groupedActions = actionResults.reduce((groups, action) => {
+    const group = action.group || 'Actions';
+    groups[group] = groups[group] || [];
+    groups[group].push(action);
+    return groups;
+  }, {});
+  const itemResults = normalizedQuery ? rankedMatches(
+    items,
+    normalizedQuery,
+    item => [item.path, item.title, item.description, item.owner, item.domain, item.source, item.column, item.severity, item.riskLevel, item.decisionStatus, item.roadmapStage, ...(item.dependencies || [])].join(' '),
+    8
+  ) : [];
   function runAction(action) {
     onClose();
     onCommandRun?.(action.id);
@@ -1782,11 +1940,11 @@ function CommandPalette({ actions, recentCommandIds = [], onCommandRun, items, w
               </div>
             </div>
           )}
-          {actionResults.length > 0 && (
-            <div className="mb-2">
-              <div className="text-[10px] uppercase tracking-wider text-slate-500 px-2 py-1">Actions</div>
+          {Object.entries(groupedActions).map(([group, groupActions]) => (
+            <div key={group} className="mb-2">
+              <div className="text-[10px] uppercase tracking-wider text-slate-500 px-2 py-1">{group}</div>
               <div className="space-y-1">
-                {actionResults.map(action => (
+                {groupActions.map(action => (
                   <button key={action.id} onClick={() => runAction(action)} className="w-full px-2 py-2 rounded bg-slate-950/40 hover:bg-slate-800 border border-slate-800 hover:border-slate-600 text-left flex items-center gap-2">
                     <span className="w-6 h-6 rounded bg-slate-800 text-blue-300 flex items-center justify-center flex-shrink-0">{action.icon}</span>
                     <span className="min-w-0 flex-1">
@@ -1797,7 +1955,7 @@ function CommandPalette({ actions, recentCommandIds = [], onCommandRun, items, w
                 ))}
               </div>
             </div>
-          )}
+          ))}
           {itemResults.length > 0 && (
             <div>
               <div className="text-[10px] uppercase tracking-wider text-slate-500 px-2 py-1">Jump To Work</div>

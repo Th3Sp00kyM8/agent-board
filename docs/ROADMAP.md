@@ -8,16 +8,16 @@ Agent Board is intentionally small and local-first. The goal is to stay easy to 
 - Keep the editing flow essentials-first, with advanced fields available on demand
 - Keep keyboard-driven workflows fast while keeping local preferences out of project data
 - Keep sample data fake and generic
-- Improve import/export reliability and pre-replacement review
+- Improve import/export reliability, schema review, and custom-field handoffs
+- Keep command discovery fast and easy to scan as actions grow
 - Improve documentation for adapting columns, tiers, labels, and project-map domains
 - Keep dependency and GitHub Actions maintenance automated
 
 ## Likely Improvements
 
 - More template presets and template customization controls
-- Command palette grouping and fuzzy scoring improvements
-- Deeper keyboard-only board navigation between cards and columns
-- Import dry-run validation for custom schema changes
+- Keyboard result selection and richer recent-item jump history
+- Import field-mapping controls for custom schema changes
 - Dependency graph filtering by domain, owner, and roadmap stage
 - Export presets for risk reviews, decision logs, and roadmap planning
 - Better validation messages for imported JSON files

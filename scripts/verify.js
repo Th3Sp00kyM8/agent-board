@@ -264,6 +264,9 @@ function verifyReleaseAssets() {
   expect(readme.includes('Recent commands'), 'README should document command recents.');
   expect(readme.includes('shortcut can be changed'), 'README should document configurable shortcut preference.');
   expect(readme.includes('import preview'), 'README should document import preview.');
+  expect(readme.includes('fuzzy-ranked'), 'README should document fuzzy-ranked command search.');
+  expect(readme.includes('dry-run validation'), 'README should document import dry-run validation.');
+  expect(readme.includes('arrow keys to move focus'), 'README should document keyboard focus navigation.');
   expect(readme.includes('Focus Dashboard'), 'README should document the Focus Dashboard feature.');
   expect(readme.includes('Project Map'), 'README should document the Project Map feature.');
   expect(readme.includes('schemaVersion'), 'README should document board schema metadata.');

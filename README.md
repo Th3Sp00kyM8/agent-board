@@ -16,10 +16,10 @@ It is designed for private project planning, not as a hosted multi-user service.
 - Start Here checklist that guides a new board through setup without separate documentation
 - Focus Dashboard that immediately surfaces attention items, blockers, next work, risks, decisions, and roadmap load
 - Local kanban board with To Do, Doing, In Review, Blocked, and Done columns
-- Command palette with recent actions, configurable local shortcut, board filters, exports, backups, settings, templates, and item jump
+- Command palette with grouped, fuzzy-ranked results, recent actions, configurable local shortcut, board filters, exports, backups, settings, templates, and item jump
 - Essentials-first item editor with advanced planning fields available on demand
 - Undo snackbar for moves, bulk edits, deletes, reset, and template application
-- Visible keyboard focus states, focus-trapped main modals, and keyboard card controls
+- Visible keyboard focus states, focus-trapped main modals, and arrow-key card navigation
 - Tiered sections for Core Release, Post Release, and Future Content
 - Configurable project title and visible labels for workstreams and cycles
 - Sprint board for last/current/next cycle notes
@@ -123,7 +123,7 @@ Click `Backup` in the header to create a timestamped copy of `state.json` in `ba
 
 ## Import And Export
 
-Use `Export` to download a full JSON copy of the board. Exports include `app`, `schemaVersion`, and `version` metadata so future forks can identify compatible board files. Use `Import` to preview and replace the current local board with a compatible JSON file. The import preview compares current and incoming item counts, column distribution, risks, decisions, dependencies, metadata, warnings, and sample incoming items before replacement. Agent Board still accepts older item-array exports, adds current metadata on save, and warns before importing unknown newer schemas. Create a backup first if the current board matters.
+Use `Export` to download a full JSON copy of the board. Exports include `app`, `schemaVersion`, and `version` metadata so future forks can identify compatible board files. Use `Import` to preview and replace the current local board with a compatible JSON file. The import preview compares current and incoming item counts, column distribution, risks, decisions, dependencies, metadata, warnings, and sample incoming items before replacement. Import dry-run validation blocks structurally invalid imports, including missing required item identifiers or titles, and flags duplicate ids, duplicate paths, unknown columns, unknown release tiers, and custom fields before you replace local data. Agent Board still accepts older item-array exports, adds current metadata on save, and warns before importing unknown newer schemas. Create a backup first if the current board matters.
 
 ## Templates
 
@@ -137,11 +137,11 @@ Most risky changes show a short-lived undo snackbar, including card moves, bulk 
 
 ## Keyboard Workflow
 
-Open the command palette with `Ctrl+K` on Windows/Linux or `Cmd+K` on macOS. Use it to add work, open templates, show filters, focus blocked work, copy a chat sync, export, import, create a backup, open settings, reset after confirmation, or jump directly to a work item. Recent commands appear at the top of the palette.
+Open the command palette with `Ctrl+K` on Windows/Linux or `Cmd+K` on macOS. Use it to add work, open templates, show filters, focus blocked work, copy a chat sync, export, import, create a backup, open settings, reset after confirmation, or jump directly to a work item. Results are grouped by purpose and fuzzy-ranked so partial command names still find the right action. Recent commands appear at the top of the palette.
 
 The command-palette shortcut can be changed or turned off in `Settings`. This preference is saved locally in your browser and does not change project files.
 
-Work cards are keyboard-operable: press `Enter` to open the focused card, `Space` to select it, and `Alt+Arrow Left` / `Alt+Arrow Right` to move it between board columns. The command palette, template chooser, settings modal, detail modal, and item editor keep focus inside the active dialog until closed.
+Work cards are keyboard-operable: press `Enter` to open the focused card, `Space` to select it, arrow keys to move focus between visible cards and columns, and `Alt+Arrow Left` / `Alt+Arrow Right` to move the card between board columns. The command palette, template chooser, settings modal, detail modal, and item editor keep focus inside the active dialog until closed.
 
 ## Focus Dashboard
 

@@ -4,6 +4,19 @@ All notable changes to Agent Board will be documented in this file.
 
 The format is based on Keep a Changelog, and this project uses simple `0.x` versions while the tool is early.
 
+## [0.8.0] - 2026-06-27
+
+### Added
+
+- Grouped and fuzzy-ranked command palette results for faster command discovery
+- Arrow-key focus navigation between visible cards and columns without moving work
+- Import dry-run validation for missing required fields, duplicate identifiers, unknown columns, unknown release tiers, and custom fields
+
+### Changed
+
+- Import replacement is blocked when dry-run validation finds structural errors
+- Updated README docs for command ranking, keyboard navigation, and import dry-run validation
+
 ## [0.7.0] - 2026-06-27
 
 ### Added
