@@ -76,6 +76,9 @@ function verifyPackage() {
   expect(pkg.license === 'MIT', 'package.json should declare the MIT license.');
   expect(pkg.type === 'module', 'package.json should use ESM via type=module.');
   expect(isNonEmptyString(pkg.description), 'package.json should include a description.');
+  expect(pkg.homepage === 'https://github.com/Th3Sp00kyM8/agent-board#readme', 'package.json should include the public repository homepage.');
+  expect(pkg.repository && pkg.repository.url === 'git+https://github.com/Th3Sp00kyM8/agent-board.git', 'package.json should include the public repository URL.');
+  expect(pkg.bugs && pkg.bugs.url === 'https://github.com/Th3Sp00kyM8/agent-board/issues', 'package.json should include the public issue tracker URL.');
   expect(pkg.engines && isNonEmptyString(pkg.engines.node), 'package.json should declare a Node engine.');
   for (const scriptName of ['dev', 'build', 'preview', 'reset:sample', 'verify', 'release:check', 'smoke:fresh']) {
     expect(pkg.scripts && isNonEmptyString(pkg.scripts[scriptName]), `package.json is missing script: ${scriptName}`);
@@ -193,6 +196,8 @@ function verifyReleaseAssets() {
   }
   const readme = readText('README.md');
   expect(readme.includes('assets/screenshots/board-overview.png'), 'README should include the board overview screenshot.');
+  expect(readme.includes('github.com/Th3Sp00kyM8/agent-board/actions/workflows/ci.yml'), 'README should include the public CI badge/link.');
+  expect(readme.includes('git clone https://github.com/Th3Sp00kyM8/agent-board.git'), 'README Quick Start should include the public clone URL.');
   expect(readme.includes('docs/RELEASE.md'), 'README should link to docs/RELEASE.md.');
   expect(readme.includes('docs/PUBLISHING.md'), 'README should link to docs/PUBLISHING.md.');
 }

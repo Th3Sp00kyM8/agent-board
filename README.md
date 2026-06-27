@@ -1,5 +1,9 @@
 # Agent Board
 
+[![CI](https://github.com/Th3Sp00kyM8/agent-board/actions/workflows/ci.yml/badge.svg)](https://github.com/Th3Sp00kyM8/agent-board/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Th3Sp00kyM8/agent-board)](https://github.com/Th3Sp00kyM8/agent-board/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 Agent Board is a local-first kanban board for coordinating human and AI project work. It runs on your machine, stores state in plain JSON, and includes a chat-friendly summary export for handoffs to assistants or teammates.
 
 It is designed for private project planning, not as a hosted multi-user service.
@@ -20,6 +24,8 @@ It is designed for private project planning, not as a hosted multi-user service.
 ## Quick Start
 
 ```powershell
+git clone https://github.com/Th3Sp00kyM8/agent-board.git
+cd agent-board
 npm install
 npm run dev
 ```

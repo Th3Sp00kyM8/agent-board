@@ -5,6 +5,14 @@
   "type": "module",
   "license": "MIT",
   "description": "Local-first kanban board for coordinating human and AI project work.",
+  "homepage": "https://github.com/Th3Sp00kyM8/agent-board#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Th3Sp00kyM8/agent-board.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Th3Sp00kyM8/agent-board/issues"
+  },
   "keywords": [
     "kanban",
     "local-first",
