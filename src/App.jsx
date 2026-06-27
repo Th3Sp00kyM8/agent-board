@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { Plus, X, Edit2, Trash2, Copy, Download, Upload, Search, AlertTriangle, RotateCcw, Lock, ChevronDown, ChevronRight, ChevronLeft, Check, Calendar, Tag, FileText, ArrowRight, Palette, MessageSquare, Info, Target, Zap, AlertCircle, Save, WifiOff, Layers, Settings, GitBranch, ShieldAlert, Map, Scale } from 'lucide-react';
 
+const BOARD_SCHEMA_VERSION = 2;
+const BOARD_STATE_VERSION = 'agent-board-state-v2';
+const BOARD_APP_ID = 'agent-board';
 const COLUMNS = ['To Do', 'Doing', 'In Review', 'Blocked', 'Done'];
 
 const RELEASE_TIERS = [
@@ -160,6 +163,48 @@ function countBy(items, field) {
   }, {});
 }
 
+function createStatePayload(items, sprintBoard, extra = {}) {
+  return {
+    app: BOARD_APP_ID,
+    schemaVersion: BOARD_SCHEMA_VERSION,
+    version: BOARD_STATE_VERSION,
+    ...extra,
+    items: items.map(ensureItemShape),
+    sprintBoard: { ...DEFAULT_SPRINT_BOARD, ...(sprintBoard || {}) },
+  };
+}
+
+function normalizeStatePayload(data) {
+  const warnings = [];
+  let importedItems = null;
+  let importedSprint = null;
+  let schemaVersion = 0;
+  let sourceVersion = 'legacy-array';
+
+  if (Array.isArray(data)) {
+    importedItems = data;
+    warnings.push('This file is a legacy item array. Agent Board will add current board metadata on save.');
+  } else if (data && typeof data === 'object' && Array.isArray(data.items)) {
+    importedItems = data.items;
+    if (data.sprintBoard && typeof data.sprintBoard === 'object' && !Array.isArray(data.sprintBoard)) importedSprint = data.sprintBoard;
+    schemaVersion = Number.isFinite(Number(data.schemaVersion)) ? Number(data.schemaVersion) : 0;
+    sourceVersion = typeof data.version === 'string' ? data.version : (schemaVersion ? `schema-${schemaVersion}` : 'legacy-object');
+    if (!schemaVersion) warnings.push('This file has no schemaVersion. Agent Board will import it as legacy data and add current metadata on save.');
+    if (schemaVersion > BOARD_SCHEMA_VERSION) warnings.push(`This file uses schemaVersion ${schemaVersion}. This app supports ${BOARD_SCHEMA_VERSION}; known fields will import, but newer fields may be ignored.`);
+    if (data.app && data.app !== BOARD_APP_ID) warnings.push(`This file identifies as ${data.app}. Verify it is compatible before replacing your board.`);
+  } else {
+    throw new Error('expected an items array or an export object with { items, sprintBoard }');
+  }
+
+  return {
+    items: importedItems.map(ensureItemShape),
+    sprintBoard: importedSprint,
+    schemaVersion,
+    sourceVersion,
+    warnings,
+  };
+}
+
 function suggestNextPath(existingPaths) {
   const singletonAlphabetic = existingPaths.filter(p => /^[A-Z]{1,2}$/.test(p)).sort();
   if (singletonAlphabetic.length === 0) return 'A';
@@ -266,11 +311,9 @@ export default function App() {
         const res = await fetch('/api/state');
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
-        if (data.items && Array.isArray(data.items)) {
-          // Backward compat: ensure all items have releaseTier
-          setItems(data.items.map(ensureItemShape));
-        }
-        if (data.sprintBoard) setSprintBoard({ ...DEFAULT_SPRINT_BOARD, ...data.sprintBoard });
+        const normalizedState = normalizeStatePayload(data);
+        setItems(normalizedState.items);
+        if (normalizedState.sprintBoard) setSprintBoard({ ...DEFAULT_SPRINT_BOARD, ...normalizedState.sprintBoard });
         setServerStatus('ok');
       } catch (err) {
         console.error('Failed to load state:', err);
@@ -292,7 +335,7 @@ export default function App() {
         const res = await fetch('/api/state', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ items, sprintBoard }),
+          body: JSON.stringify(createStatePayload(items, sprintBoard)),
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
@@ -570,7 +613,7 @@ export default function App() {
   }
 
   function exportJSON() {
-    const payload = { items, sprintBoard, exportedAt: nowIso(), version: 'local-v2-tiers' };
+    const payload = createStatePayload(items, sprintBoard, { exportedAt: nowIso() });
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -586,25 +629,12 @@ export default function App() {
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
-        const data = JSON.parse(event.target.result);
-        let importedItems = null;
-        let importedSprint = null;
-        if (Array.isArray(data)) {
-          importedItems = data;
-        } else if (data.items && Array.isArray(data.items)) {
-          importedItems = data.items;
-          if (data.sprintBoard) importedSprint = data.sprintBoard;
-        } else {
-          alert('Invalid JSON: expected an items array or an export object with { items, sprintBoard }.');
-          return;
-        }
-        if (importedItems.length === 0) {
+        const imported = normalizeStatePayload(JSON.parse(event.target.result));
+        if (imported.items.length === 0) {
           alert('Imported file has no items.');
           return;
         }
-        // Migrate imported items to ensure releaseTier
-        importedItems = importedItems.map(ensureItemShape);
-        setShowImportConfirm({ items: importedItems, sprintBoard: importedSprint });
+        setShowImportConfirm(imported);
       } catch (err) {
         alert(`Failed to parse JSON: ${err.message}`);
       }
@@ -1168,7 +1198,9 @@ export default function App() {
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50" onClick={() => setShowImportConfirm(null)}>
             <div className="bg-slate-900 border border-amber-700 rounded-lg max-w-md w-full p-4" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center gap-2 mb-2 text-amber-400"><AlertTriangle size={18} /><h2 className="text-base font-bold">Replace current data?</h2></div>
-              <p className="text-xs text-slate-400 mb-3">Imported file has <strong className="text-slate-200">{showImportConfirm.items.length} items</strong>{showImportConfirm.sprintBoard ? ' and sprint board state' : ''}. This will replace your current backlog ({items.length} items) on disk. Consider creating a Backup first.</p>
+              <p className="text-xs text-slate-400 mb-2">Imported file has <strong className="text-slate-200">{showImportConfirm.items.length} items</strong>{showImportConfirm.sprintBoard ? ' and sprint board state' : ''}. This will replace your current backlog ({items.length} items) on disk. Consider creating a Backup first.</p>
+              <div className="text-[10px] text-slate-500 bg-slate-950/60 border border-slate-800 rounded p-2 mb-2">Source: {showImportConfirm.sourceVersion || 'unknown'} / schema {showImportConfirm.schemaVersion || 'legacy'}</div>
+              {showImportConfirm.warnings?.length > 0 && <div className="text-[11px] text-amber-300 bg-amber-950/30 border border-amber-900/50 rounded p-2 mb-3 space-y-1">{showImportConfirm.warnings.map(w => <div key={w}>- {w}</div>)}</div>}
               <div className="flex gap-2 justify-end"><button onClick={() => setShowImportConfirm(null)} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded text-xs">Cancel</button><button onClick={confirmImport} className="px-3 py-1.5 bg-amber-700 hover:bg-amber-600 rounded text-xs">Replace with import</button></div>
             </div>
           </div>

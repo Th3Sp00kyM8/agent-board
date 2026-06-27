@@ -12,7 +12,7 @@ Agent Board is intentionally small and local-first. The goal is to stay easy to 
 
 ## Likely Improvements
 
-- Optional board schema versioning for safer imports
+- Better import preview for schema warnings and replacement scope
 - Dependency graph filtering by domain, owner, and roadmap stage
 - Export presets for risk reviews, decision logs, and roadmap planning
 - Better validation messages for imported JSON files

@@ -1,4 +1,7 @@
 {
+  "app": "agent-board",
+  "schemaVersion": 2,
+  "version": "agent-board-state-v2",
   "items": [
     {
       "id": "demo-kickoff",

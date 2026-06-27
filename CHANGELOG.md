@@ -4,6 +4,18 @@ All notable changes to Agent Board will be documented in this file.
 
 The format is based on Keep a Changelog, and this project uses simple `0.x` versions while the tool is early.
 
+## [0.2.1] - 2026-06-27
+
+### Added
+
+- Board state metadata with `app`, `schemaVersion`, and export `version` fields
+- Import compatibility warnings for legacy arrays, missing schema metadata, different app ids, and newer schema versions
+- Server-side state normalization so saved boards keep schema metadata
+
+### Changed
+
+- Documented state schema metadata for template users and forks
+
 ## [0.2.0] - 2026-06-27
 
 ### Added

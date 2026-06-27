@@ -1,7 +1,7 @@
 // Agent Board backend
 // Serves local state/config JSON from disk. State writes use temp-file + rename.
 // Endpoints:
-//   GET  /api/state          -> { items: [...], sprintBoard: {...} }
+//   GET  /api/state          -> { app, schemaVersion, version, items, sprintBoard }
 //   PUT  /api/state          -> overwrites entire state
 //   GET  /api/config         -> local project configuration
 //   PUT  /api/config         -> overwrites local project configuration
@@ -23,6 +23,9 @@ const CONFIG_FILE = path.join(__dirname, 'config.json');
 const SAMPLE_STATE_FILE = path.join(__dirname, 'sample.state.json');
 const SAMPLE_CONFIG_FILE = path.join(__dirname, 'config.example.json');
 const BACKUP_DIR = path.join(__dirname, 'backups');
+const STATE_SCHEMA_VERSION = 2;
+const STATE_VERSION = 'agent-board-state-v2';
+const APP_ID = 'agent-board';
 const DEFAULT_CONFIG = {
   projectName: 'Agent Board',
   labels: { workstream: 'Workstream', cycle: 'Sprint' },
@@ -50,6 +53,9 @@ if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true });
 copyOrCreate(CONFIG_FILE, SAMPLE_CONFIG_FILE, DEFAULT_CONFIG, 'config.json');
 
 copyOrCreate(STATE_FILE, SAMPLE_STATE_FILE, {
+  app: APP_ID,
+  schemaVersion: STATE_SCHEMA_VERSION,
+  version: STATE_VERSION,
   items: [],
   sprintBoard: {}
 }, 'state.json');
@@ -90,6 +96,23 @@ app.get('/api/config', (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+function normalizeState(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    throw new Error('Body must be an object with items + sprintBoard');
+  }
+  if (!Array.isArray(body.items)) throw new Error('items must be an array');
+  const schemaVersion = Number.isFinite(Number(body.schemaVersion)) ? Number(body.schemaVersion) : STATE_SCHEMA_VERSION;
+  const sprintBoard = body.sprintBoard && typeof body.sprintBoard === 'object' && !Array.isArray(body.sprintBoard) ? body.sprintBoard : {};
+  return {
+    ...body,
+    app: typeof body.app === 'string' && body.app.trim() ? body.app.trim() : APP_ID,
+    schemaVersion,
+    version: typeof body.version === 'string' && body.version.trim() ? body.version.trim() : STATE_VERSION,
+    items: body.items,
+    sprintBoard,
+  };
+}
 
 function normalizeConfig(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
@@ -139,18 +162,13 @@ app.get('/api/state', (req, res) => {
 
 app.put('/api/state', (req, res) => {
   try {
-    const body = req.body;
-    if (!body || typeof body !== 'object' || Array.isArray(body)) {
-      return res.status(400).json({ error: 'Body must be an object with items + sprintBoard' });
-    }
-    if (!Array.isArray(body.items)) {
-      return res.status(400).json({ error: 'items must be an array' });
-    }
+    const body = normalizeState(req.body);
     writeJsonAtomic(STATE_FILE, body);
     res.json({ ok: true, savedAt: new Date().toISOString() });
   } catch (err) {
     console.error('[server] PUT /api/state failed:', err);
-    res.status(500).json({ error: err.message });
+    const status = err.message.includes('items') || err.message.includes('object') ? 400 : 500;
+    res.status(status).json({ error: err.message });
   }
 });
 

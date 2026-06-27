@@ -112,7 +112,7 @@ Click `Backup` in the header to create a timestamped copy of `state.json` in `ba
 
 ## Import And Export
 
-Use `Export` to download a full JSON copy of the board. Use `Import` to replace the current local board with a compatible JSON file. Create a backup first if the current board matters.
+Use `Export` to download a full JSON copy of the board. Exports include `app`, `schemaVersion`, and `version` metadata so future forks can identify compatible board files. Use `Import` to replace the current local board with a compatible JSON file. Agent Board still accepts older item-array exports, adds current metadata on save, and warns before importing unknown newer schemas. Create a backup first if the current board matters.
 
 ## Project Map
 

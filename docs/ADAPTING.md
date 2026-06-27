@@ -27,7 +27,7 @@ Use this for simple language changes before editing source code.
 
 ## 2. Replace The Sample Data
 
-Keep `sample.state.json` fake and safe to share. It should show the shape of a useful board without exposing real work.
+Keep `sample.state.json` fake and safe to share. It should show the shape of a useful board without exposing real work. Keep the top-level `app`, `schemaVersion`, and `version` metadata intact unless your fork intentionally changes the state format.
 
 A good sample board has:
 
@@ -40,7 +40,7 @@ A good sample board has:
 - At least one non-None risk, roadmap stage, and decision state
 - Generic examples that do not mention a private client, employer, repository, product, or secret
 
-After changing `sample.state.json`, run:
+After changing `sample.state.json`, keep dependency references pointing at valid sample item paths, ids, or exact titles. Then run:
 
 ```powershell
 npm run reset:sample

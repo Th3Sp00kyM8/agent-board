@@ -6,6 +6,9 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const root = path.dirname(path.dirname(__filename));
 
+const appId = 'agent-board';
+const stateSchemaVersion = 2;
+const stateVersion = 'agent-board-state-v2';
 const columns = ['To Do', 'Doing', 'In Review', 'Blocked', 'Done'];
 const severities = ['Critical', 'High', 'Medium', 'Low'];
 const sizes = ['S', 'M', 'L', 'XL'];
@@ -102,6 +105,9 @@ function verifySampleState() {
   const state = readJson('sample.state.json');
   if (!state) return;
 
+  expect(state.app === appId, `sample.state.json app must be ${appId}.`);
+  expect(state.schemaVersion === stateSchemaVersion, `sample.state.json schemaVersion must be ${stateSchemaVersion}.`);
+  expect(state.version === stateVersion, `sample.state.json version must be ${stateVersion}.`);
   expect(Array.isArray(state.items), 'sample.state.json items must be an array.');
   expect(state.sprintBoard && typeof state.sprintBoard === 'object', 'sample.state.json must include sprintBoard.');
   if (!Array.isArray(state.items)) return;
@@ -248,6 +254,7 @@ function verifyReleaseAssets() {
   expect(readme.includes('docs/TEMPLATE_USE.md'), 'README should link to docs/TEMPLATE_USE.md.');
   expect(readme.includes('docs/ROADMAP.md'), 'README should link to docs/ROADMAP.md.');
   expect(readme.includes('Project Map'), 'README should document the Project Map feature.');
+  expect(readme.includes('schemaVersion'), 'README should document board schema metadata.');
   expect(readme.includes('CODE_OF_CONDUCT.md'), 'README should link to CODE_OF_CONDUCT.md.');
   expect(readme.includes('SUPPORT.md'), 'README should link to SUPPORT.md.');
 }
