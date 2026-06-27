@@ -186,6 +186,9 @@ function verifyReleaseAssets() {
   expect(fs.existsSync(path.join(root, 'docs', 'RELEASE.md')), 'docs/RELEASE.md is missing.');
   expect(fs.existsSync(path.join(root, 'docs', 'PUBLISHING.md')), 'docs/PUBLISHING.md is missing.');
   expect(fs.existsSync(path.join(root, 'docs', 'TEMPLATE_USE.md')), 'docs/TEMPLATE_USE.md is missing.');
+  expect(fs.existsSync(path.join(root, 'docs', 'ROADMAP.md')), 'docs/ROADMAP.md is missing.');
+  expect(fs.existsSync(path.join(root, 'CODE_OF_CONDUCT.md')), 'CODE_OF_CONDUCT.md is missing.');
+  expect(fs.existsSync(path.join(root, 'SUPPORT.md')), 'SUPPORT.md is missing.');
   expect(fs.existsSync(path.join(root, '.gitattributes')), '.gitattributes is missing.');
   expect(fs.existsSync(path.join(root, '.editorconfig')), '.editorconfig is missing.');
   const dependabotPath = path.join(root, '.github', 'dependabot.yml');
@@ -202,6 +205,9 @@ function verifyReleaseAssets() {
   expect(readme.includes('docs/RELEASE.md'), 'README should link to docs/RELEASE.md.');
   expect(readme.includes('docs/PUBLISHING.md'), 'README should link to docs/PUBLISHING.md.');
   expect(readme.includes('docs/TEMPLATE_USE.md'), 'README should link to docs/TEMPLATE_USE.md.');
+  expect(readme.includes('docs/ROADMAP.md'), 'README should link to docs/ROADMAP.md.');
+  expect(readme.includes('CODE_OF_CONDUCT.md'), 'README should link to CODE_OF_CONDUCT.md.');
+  expect(readme.includes('SUPPORT.md'), 'README should link to SUPPORT.md.');
 }
 
 verifyPackage();
