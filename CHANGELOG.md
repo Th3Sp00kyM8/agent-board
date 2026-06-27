@@ -4,6 +4,19 @@ All notable changes to Agent Board will be documented in this file.
 
 The format is based on Keep a Changelog, and this project uses simple `0.x` versions while the tool is early.
 
+## [0.4.0] - 2026-06-27
+
+### Added
+
+- First-run template chooser for blank, demo, software project, creator launch, research project, and operations tracker boards
+- Header `Templates` action so users can switch starter workflows after setup
+- Template previews with item, blocked, and decision counts before applying
+
+### Changed
+
+- Blank and demo boards now prompt users toward a clearer starting workflow without interrupting existing real boards
+- Updated README docs for templates and first-run setup
+
 ## [0.3.0] - 2026-06-27
 
 ### Added

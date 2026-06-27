@@ -253,6 +253,8 @@ function verifyReleaseAssets() {
   expect(readme.includes('docs/PUBLISHING.md'), 'README should link to docs/PUBLISHING.md.');
   expect(readme.includes('docs/TEMPLATE_USE.md'), 'README should link to docs/TEMPLATE_USE.md.');
   expect(readme.includes('docs/ROADMAP.md'), 'README should link to docs/ROADMAP.md.');
+  expect(readme.includes('Templates'), 'README should document the Templates feature.');
+  expect(readme.includes('software project'), 'README should document template presets.');
   expect(readme.includes('Focus Dashboard'), 'README should document the Focus Dashboard feature.');
   expect(readme.includes('Project Map'), 'README should document the Project Map feature.');
   expect(readme.includes('schemaVersion'), 'README should document board schema metadata.');

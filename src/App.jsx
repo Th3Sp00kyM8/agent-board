@@ -87,6 +87,122 @@ const DEFAULT_SPRINT_BOARD = {
   nextRoundGoal: 'Planning notes...',
 };
 
+const TEMPLATE_DATE = '2026-01-01T09:00:00.000Z';
+
+function templateItem({ id, path, title, description, column = 'To Do', severity = 'Medium', size = 'M', source = 'User', releaseTier = 'core_release', candidateRound = 'Cycle 1', actualRound = null, reserved = false, notes = '', domain = 'Delivery', dependencies = [], riskLevel = 'None', roadmapStage = 'Now', decisionStatus = 'None', owner = 'Project Lead' }) {
+  return {
+    id, path, title, description, column, severity, size, source, releaseTier,
+    candidateRound, actualRound, reserved, notes, domain, dependencies,
+    riskLevel, roadmapStage, decisionStatus, owner,
+    createdAt: TEMPLATE_DATE, updatedAt: TEMPLATE_DATE, columnEnteredAt: TEMPLATE_DATE,
+  };
+}
+
+const BOARD_TEMPLATES = [
+  {
+    id: 'blank',
+    title: 'Start blank',
+    subtitle: 'Clean board, no assumptions.',
+    description: 'Use this when you already know your workflow and want an empty project space.',
+    items: [],
+    sprintBoard: {
+      lastRoundLabel: 'Cycle 0', lastRoundSummary: 'No prior cycle yet.',
+      currentRound: 'Cycle 1', currentRoundGoal: 'Add the first useful work items.',
+      nextRound: 'Cycle 2', nextRoundGoal: 'Refine priorities after the first pass.',
+    },
+  },
+  {
+    id: 'demo',
+    title: 'Demo board',
+    subtitle: 'A tiny guided example.',
+    description: 'Shows the core shape: brief, handoff, review, decision, and done work.',
+    sprintBoard: {
+      lastRoundLabel: 'Sprint 0', lastRoundSummary: 'Repository initialized and the local board started.',
+      currentRound: 'Sprint 1', currentRoundGoal: 'Use the board to plan the first real project tasks.',
+      nextRound: 'Sprint 2', nextRoundGoal: 'Review import/export and refine the workflow.',
+    },
+    items: [
+      templateItem({ id: 'demo-kickoff', path: 'A', title: 'Create project brief', description: 'Write the short project context that a human or AI assistant should read before starting work.', column: 'Doing', severity: 'High', size: 'S', source: 'User', candidateRound: 'Sprint 1', notes: 'Keep this brief enough to paste into a new chat.', domain: 'Delivery', dependencies: ['E'], owner: 'Project Lead' }),
+      templateItem({ id: 'demo-ai-handoff', path: 'B', title: 'Prepare AI handoff summary', description: 'Capture current status, blockers, acceptance criteria, and the next concrete task.', column: 'To Do', source: 'AI Agent', candidateRound: 'Sprint 1', notes: 'Use Sync to Chat after updating the board.', domain: 'Dependency', dependencies: ['A'], riskLevel: 'Low', owner: 'AI Agent' }),
+      templateItem({ id: 'demo-review', path: 'C', title: 'Review import/export flow', description: 'Confirm that a downloaded JSON export can be imported back into a clean board.', column: 'In Review', source: 'Reviewer', releaseTier: 'post_release', candidateRound: 'Sprint 2', domain: 'QA', dependencies: ['B'], riskLevel: 'Medium', roadmapStage: 'Next', owner: 'Reviewer' }),
+      templateItem({ id: 'demo-blocked', path: 'D', title: 'Choose public project name', description: 'Pick a name before publishing the repository or writing release docs.', column: 'Blocked', severity: 'Low', size: 'S', source: 'User decision', releaseTier: 'future_content', candidateRound: null, reserved: true, notes: 'Reserved items cannot move to Doing until explicitly unreserved.', domain: 'Decision', dependencies: ['A'], riskLevel: 'High', roadmapStage: 'Backlog', decisionStatus: 'Proposed', owner: 'Project Owner' }),
+      templateItem({ id: 'demo-done', path: 'E', title: 'Initialize local board', description: 'Clone, install dependencies, and start the local dev server.', column: 'Done', severity: 'High', size: 'S', source: 'User', candidateRound: 'Sprint 0', actualRound: 'Sprint 0', notes: 'The server created local state.json from sample.state.json.', domain: 'Operations', decisionStatus: 'Accepted', owner: 'Project Lead' }),
+    ],
+  },
+  {
+    id: 'software',
+    title: 'Software project',
+    subtitle: 'Plan, build, review, release.',
+    description: 'A practical setup for product features, engineering tasks, QA, risks, and launch decisions.',
+    sprintBoard: {
+      lastRoundLabel: 'Sprint 0', lastRoundSummary: 'Project setup and goals defined.',
+      currentRound: 'Sprint 1', currentRoundGoal: 'Build the first usable feature slice.',
+      nextRound: 'Sprint 2', nextRoundGoal: 'Harden the release path and reduce risk.',
+    },
+    items: [
+      templateItem({ id: 'software-brief', path: 'A', title: 'Define feature outcome', description: 'Write the user problem, success criteria, and non-goals for the first feature slice.', column: 'Doing', severity: 'High', size: 'S', domain: 'Delivery', owner: 'Product Lead' }),
+      templateItem({ id: 'software-api', path: 'B', title: 'Implement core workflow', description: 'Build the smallest end-to-end path that proves the feature works.', column: 'To Do', severity: 'High', size: 'L', source: 'Engineering', domain: 'Engineering', dependencies: ['A'], riskLevel: 'Medium', owner: 'Engineering' }),
+      templateItem({ id: 'software-qa', path: 'C', title: 'Run acceptance pass', description: 'Verify the workflow against acceptance criteria and capture release blockers.', column: 'To Do', size: 'M', source: 'QA', releaseTier: 'post_release', candidateRound: 'Sprint 2', domain: 'QA', dependencies: ['B'], roadmapStage: 'Next', owner: 'QA' }),
+      templateItem({ id: 'software-release', path: 'D', title: 'Choose release scope', description: 'Decide what ships now and what moves to follow-up.', column: 'Blocked', severity: 'High', size: 'S', source: 'Decision', domain: 'Decision', dependencies: ['B'], riskLevel: 'High', decisionStatus: 'Proposed', owner: 'Project Owner' }),
+      templateItem({ id: 'software-risk', path: 'E', title: 'Document rollback plan', description: 'Write the recovery path before launch so the team knows how to respond.', column: 'In Review', severity: 'Medium', size: 'S', source: 'Operations', domain: 'Risk', riskLevel: 'Medium', roadmapStage: 'Next', owner: 'Operations' }),
+    ],
+  },
+  {
+    id: 'creator',
+    title: 'Creator launch',
+    subtitle: 'Content, assets, publishing.',
+    description: 'A board for a creator, indie launch, newsletter, video, course, or public announcement.',
+    sprintBoard: {
+      lastRoundLabel: 'Prep', lastRoundSummary: 'Topic and audience chosen.',
+      currentRound: 'Launch Week', currentRoundGoal: 'Finish the core asset and publish confidently.',
+      nextRound: 'Follow-up', nextRoundGoal: 'Review results and plan the next release.',
+    },
+    items: [
+      templateItem({ id: 'creator-outline', path: 'A', title: 'Lock launch message', description: 'Write the one-sentence promise and the audience this launch is for.', column: 'Doing', severity: 'High', size: 'S', domain: 'Delivery', owner: 'Creator' }),
+      templateItem({ id: 'creator-asset', path: 'B', title: 'Produce primary asset', description: 'Create the video, post, page, or download that carries the launch.', column: 'To Do', severity: 'High', size: 'L', source: 'Creator', domain: 'Design', dependencies: ['A'], owner: 'Creator' }),
+      templateItem({ id: 'creator-review', path: 'C', title: 'Review publishing checklist', description: 'Check links, thumbnails, captions, metadata, and the first call to action.', column: 'To Do', size: 'M', source: 'Reviewer', domain: 'QA', dependencies: ['B'], roadmapStage: 'Next', owner: 'Reviewer' }),
+      templateItem({ id: 'creator-risk', path: 'D', title: 'Resolve rights or source concern', description: 'Confirm asset rights, citations, or permission before public release.', column: 'Blocked', severity: 'High', size: 'S', source: 'Risk', domain: 'Risk', dependencies: ['B'], riskLevel: 'High', owner: 'Creator' }),
+      templateItem({ id: 'creator-decision', path: 'E', title: 'Choose publish date', description: 'Pick the release date and decide whether to hold for more review.', column: 'To Do', severity: 'Medium', size: 'S', source: 'Decision', domain: 'Decision', dependencies: ['C'], decisionStatus: 'Proposed', roadmapStage: 'Now', owner: 'Creator' }),
+    ],
+  },
+  {
+    id: 'research',
+    title: 'Research project',
+    subtitle: 'Questions, sources, findings.',
+    description: 'A lightweight research tracker for investigation, synthesis, and recommendation work.',
+    sprintBoard: {
+      lastRoundLabel: 'Scoping', lastRoundSummary: 'Research question and output format selected.',
+      currentRound: 'Evidence Pass', currentRoundGoal: 'Collect enough evidence to answer the main question.',
+      nextRound: 'Synthesis', nextRoundGoal: 'Convert evidence into clear decisions and next steps.',
+    },
+    items: [
+      templateItem({ id: 'research-question', path: 'A', title: 'Frame research question', description: 'Write the exact question, audience, and decision this research should support.', column: 'Doing', severity: 'High', size: 'S', domain: 'Research', owner: 'Research Lead' }),
+      templateItem({ id: 'research-sources', path: 'B', title: 'Collect source set', description: 'Gather primary and supporting sources, then flag gaps or weak evidence.', column: 'To Do', size: 'M', source: 'Researcher', domain: 'Research', dependencies: ['A'], owner: 'Researcher' }),
+      templateItem({ id: 'research-synthesis', path: 'C', title: 'Synthesize findings', description: 'Summarize what the evidence shows, where it conflicts, and what is uncertain.', column: 'To Do', severity: 'High', size: 'L', source: 'Researcher', domain: 'Documentation', dependencies: ['B'], roadmapStage: 'Next', owner: 'Research Lead' }),
+      templateItem({ id: 'research-risk', path: 'D', title: 'Resolve evidence gap', description: 'Identify missing proof that could change the recommendation.', column: 'Blocked', severity: 'Medium', size: 'S', source: 'Risk', domain: 'Risk', dependencies: ['B'], riskLevel: 'Medium', owner: 'Research Lead' }),
+      templateItem({ id: 'research-decision', path: 'E', title: 'Choose recommendation', description: 'Decide what action the research supports and what should wait.', column: 'To Do', size: 'S', source: 'Decision', domain: 'Decision', dependencies: ['C'], decisionStatus: 'Deferred', roadmapStage: 'Later', owner: 'Stakeholder' }),
+    ],
+  },
+  {
+    id: 'operations',
+    title: 'Operations tracker',
+    subtitle: 'Recurring work and incidents.',
+    description: 'A practical operational board for process work, maintenance, support, and risk control.',
+    sprintBoard: {
+      lastRoundLabel: 'Last Cycle', lastRoundSummary: 'Routine work reviewed and carryover identified.',
+      currentRound: 'This Cycle', currentRoundGoal: 'Clear blockers and protect daily operations.',
+      nextRound: 'Next Cycle', nextRoundGoal: 'Reduce recurring issues and improve handoffs.',
+    },
+    items: [
+      templateItem({ id: 'ops-review', path: 'A', title: 'Review current workload', description: 'Identify urgent work, blocked work, owner gaps, and recurring issues.', column: 'Doing', severity: 'High', size: 'S', source: 'Operations', domain: 'Operations', owner: 'Ops Lead' }),
+      templateItem({ id: 'ops-incident', path: 'B', title: 'Resolve active blocker', description: 'Track the current operational issue until ownership and next action are clear.', column: 'Blocked', severity: 'Critical', size: 'M', source: 'Risk', domain: 'Risk', dependencies: ['A'], riskLevel: 'Critical', owner: 'Ops Lead' }),
+      templateItem({ id: 'ops-handoff', path: 'C', title: 'Prepare handoff note', description: 'Summarize current status, decisions needed, and what should happen next.', column: 'To Do', size: 'S', source: 'Documentation', domain: 'Documentation', dependencies: ['A'], owner: 'Operations' }),
+      templateItem({ id: 'ops-process', path: 'D', title: 'Improve recurring process', description: 'Make one small change that prevents the same issue next cycle.', column: 'To Do', severity: 'Medium', size: 'M', source: 'Operations', releaseTier: 'post_release', domain: 'Roadmap', dependencies: ['B'], roadmapStage: 'Next', owner: 'Ops Lead' }),
+      templateItem({ id: 'ops-decision', path: 'E', title: 'Approve escalation rule', description: 'Decide when this issue should move from routine work to escalation.', column: 'In Review', size: 'S', source: 'Decision', domain: 'Decision', dependencies: ['B'], decisionStatus: 'Proposed', riskLevel: 'Low', owner: 'Stakeholder' }),
+    ],
+  },
+];
+
 function sourceAccent(source) {
   const s = (source || '').toLowerCase();
   if (s.includes('ai') || s.includes('agent')) return 'border-l-purple-500';
@@ -283,6 +399,7 @@ export default function App() {
   const [showImportConfirm, setShowImportConfirm] = useState(null);
   const [showExport, setShowExport] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showTemplateChooser, setShowTemplateChooser] = useState(false);
   const [configSaveStatus, setConfigSaveStatus] = useState('idle');
   const [configError, setConfigError] = useState('');
   const [copiedFlag, setCopiedFlag] = useState(false);
@@ -323,6 +440,9 @@ export default function App() {
         const normalizedState = normalizeStatePayload(data);
         setItems(normalizedState.items);
         if (normalizedState.sprintBoard) setSprintBoard({ ...DEFAULT_SPRINT_BOARD, ...normalizedState.sprintBoard });
+        const templateChooserSeen = window.localStorage?.getItem('agent-board-template-chooser-seen') === '1';
+        const stillOnDemoBoard = normalizedState.items.length > 0 && normalizedState.items.every(item => String(item.id || '').startsWith('demo-'));
+        if (!templateChooserSeen && (normalizedState.items.length === 0 || stillOnDemoBoard)) setShowTemplateChooser(true);
         setServerStatus('ok');
       } catch (err) {
         console.error('Failed to load state:', err);
@@ -370,6 +490,7 @@ export default function App() {
         else if (showAdd) setShowAdd(false);
         else if (showExport) setShowExport(false);
         else if (showSettings) setShowSettings(false);
+        else if (showTemplateChooser) closeTemplateChooser();
         else if (showResetConfirm) setShowResetConfirm(false);
         else if (showImportConfirm) setShowImportConfirm(null);
         else if (showBulkMove) setShowBulkMove(false);
@@ -380,7 +501,7 @@ export default function App() {
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [viewingItem, editingItem, showAdd, showExport, showSettings, showResetConfirm, showImportConfirm, showBulkMove, showBulkTier, showBulkRound, showAbout]);
+  }, [viewingItem, editingItem, showAdd, showExport, showSettings, showTemplateChooser, showResetConfirm, showImportConfirm, showBulkMove, showBulkTier, showBulkRound, showAbout]);
 
   function updateScrollState() {
     const c = scrollContainerRef.current;
@@ -574,10 +695,41 @@ export default function App() {
     setSelectedIds(selectedIds.includes(id) ? selectedIds.filter(s => s !== id) : [...selectedIds, id]);
   }
   function clearSelection() { setSelectedIds([]); }
+  function closeTemplateChooser() {
+    window.localStorage?.setItem('agent-board-template-chooser-seen', '1');
+    setShowTemplateChooser(false);
+  }
+
+  function instantiateTemplate(template) {
+    const stamp = nowIso();
+    return {
+      items: template.items.map(item => ensureItemShape({ ...item, createdAt: stamp, updatedAt: stamp, columnEnteredAt: stamp })),
+      sprintBoard: { ...DEFAULT_SPRINT_BOARD, ...template.sprintBoard },
+    };
+  }
+
+  function applyTemplate(template) {
+    const next = instantiateTemplate(template);
+    setItems(next.items);
+    setSprintBoard(next.sprintBoard);
+    setSelectedIds([]);
+    setSearch('');
+    setFilterColumn('All');
+    setFilterPath('');
+    setFilterRound('');
+    setFilterSource('All');
+    setFilterSeverity('All');
+    setFilterReleaseTier('All');
+    window.localStorage?.setItem('agent-board-template-chooser-seen', '1');
+    setShowTemplateChooser(false);
+    setShowResetConfirm(false);
+  }
+
   function resetAll() {
     setItems([]);
     setSprintBoard(DEFAULT_SPRINT_BOARD);
     setShowResetConfirm(false);
+    setShowTemplateChooser(true);
     setSelectedIds([]);
   }
 
@@ -826,6 +978,7 @@ export default function App() {
                 {syncFlag ? <Check size={12} /> : <MessageSquare size={12} />}
                 {syncFlag ? 'Copied' : 'Sync to Chat'}
               </button>
+              <button onClick={() => setShowTemplateChooser(true)} className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded text-xs flex items-center gap-1" title="Start from a project template"><Palette size={12} />Templates</button>
               <button onClick={openSettings} className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded text-xs flex items-center gap-1" title="Edit project settings"><Settings size={12} />Settings</button>
               <button onClick={createBackup} className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded text-xs flex items-center gap-1" title="Create timestamped backup"><Save size={12} />Backup</button>
               <button onClick={() => setShowExport(true)} className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded text-xs flex items-center gap-1"><Download size={12} />Export</button>
@@ -1156,6 +1309,7 @@ export default function App() {
         {viewingItem && <TaskDetailModal item={viewingItem} labels={labels} onClose={() => setViewingItem(null)} onEdit={() => { setEditingItem(viewingItem); setViewingItem(null); }} onDelete={(id) => { if (confirm(`Delete ${workstreamLabel.toLowerCase()} ${viewingItem.path}?`)) deleteItem(id); }} onMove={(id, col) => moveItem(id, col)} />}
         {(editingItem || showAdd) && <ItemEditModal item={editingItem} labels={labels} existingPaths={existingPaths} onSave={saveItem} onClose={() => { setEditingItem(null); setShowAdd(false); }} />}
         {showSettings && <SettingsModal config={appConfig} status={configSaveStatus} error={configError} onSave={saveAppConfig} onClose={() => setShowSettings(false)} />}
+        {showTemplateChooser && <TemplateChooserModal templates={BOARD_TEMPLATES} currentCount={items.length} onApply={applyTemplate} onClose={closeTemplateChooser} />}
 
         {showAbout && (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50" onClick={() => setShowAbout(false)}>
@@ -1260,6 +1414,63 @@ export default function App() {
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function TemplateChooserModal({ templates, currentCount, onApply, onClose }) {
+  const [selectedId, setSelectedId] = useState(templates[0]?.id || 'blank');
+  const selected = templates.find(template => template.id === selectedId) || templates[0];
+  const needsConfirm = currentCount > 0;
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50" onClick={onClose}>
+      <div className="bg-slate-900 border border-slate-700 rounded-lg max-w-5xl w-full max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-4 border-b border-slate-800">
+          <div>
+            <h2 className="text-base font-bold flex items-center gap-2"><Palette size={16} className="text-blue-400" />Choose a starting point</h2>
+            <div className="text-[11px] text-slate-500 mt-0.5">Pick a template now, then edit anything on the board.</div>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-200"><X size={18} /></button>
+        </div>
+        <div className="p-4 grid grid-cols-1 lg:grid-cols-[1.2fr_0.8fr] gap-4 overflow-y-auto">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {templates.map(template => (
+              <button key={template.id} onClick={() => setSelectedId(template.id)} className={'text-left border rounded p-3 transition-colors ' + (selectedId === template.id ? 'bg-blue-950/40 border-blue-700/70' : 'bg-slate-950/40 border-slate-800 hover:border-slate-600')}>
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <div className="text-sm font-semibold text-slate-100">{template.title}</div>
+                  {selectedId === template.id && <Check size={14} className="text-blue-300" />}
+                </div>
+                <div className="text-[11px] text-blue-300 mb-1">{template.subtitle}</div>
+                <div className="text-[11px] text-slate-400 leading-relaxed">{template.description}</div>
+              </button>
+            ))}
+          </div>
+          <div className="bg-slate-950/50 border border-slate-800 rounded p-3 text-xs flex flex-col min-h-[320px]">
+            <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-1">Preview</div>
+            <div className="text-lg font-bold text-slate-100 mb-1">{selected.title}</div>
+            <div className="text-slate-400 mb-3 leading-relaxed">{selected.description}</div>
+            <div className="grid grid-cols-3 gap-2 mb-3">
+              <div className="bg-slate-900 border border-slate-800 rounded p-2 text-center"><div className="text-base font-bold text-slate-100">{selected.items.length}</div><div className="text-[9px] text-slate-500">items</div></div>
+              <div className="bg-slate-900 border border-slate-800 rounded p-2 text-center"><div className="text-base font-bold text-red-300">{selected.items.filter(item => item.column === 'Blocked').length}</div><div className="text-[9px] text-slate-500">blocked</div></div>
+              <div className="bg-slate-900 border border-slate-800 rounded p-2 text-center"><div className="text-base font-bold text-amber-300">{selected.items.filter(item => item.decisionStatus !== 'None').length}</div><div className="text-[9px] text-slate-500">decisions</div></div>
+            </div>
+            <div className="space-y-1 flex-1 overflow-y-auto tk-vscroll pr-1">
+              {selected.items.slice(0, 6).map(item => (
+                <div key={item.id} className="bg-slate-900 border border-slate-800 rounded px-2 py-1">
+                  <div className="flex items-center justify-between gap-2"><span className="font-mono text-[10px] text-blue-300">{item.path}</span><span className="text-[9px] text-slate-500">{item.column}</span></div>
+                  <div className="text-[11px] text-slate-200 truncate">{item.title}</div>
+                </div>
+              ))}
+              {selected.items.length === 0 && <div className="text-[11px] text-slate-500 italic">Blank board with no starter items.</div>}
+            </div>
+            {needsConfirm && <div className="mt-3 text-[11px] text-amber-300 bg-amber-950/30 border border-amber-900/50 rounded p-2">Applying a template replaces your current {currentCount} items. Create a backup first if this board matters.</div>}
+          </div>
+        </div>
+        <div className="p-4 border-t border-slate-800 flex items-center justify-between gap-2">
+          <button onClick={onClose} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded text-xs">Cancel</button>
+          <button onClick={() => onApply(selected)} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-xs flex items-center gap-1.5"><Check size={12} />Use template</button>
+        </div>
       </div>
     </div>
   );

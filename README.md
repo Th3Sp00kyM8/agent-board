@@ -12,6 +12,7 @@ It is designed for private project planning, not as a hosted multi-user service.
 
 ## Features
 
+- First-run template chooser for blank, demo, software, creator launch, research, and operations boards
 - Focus Dashboard that immediately surfaces attention items, blockers, next work, risks, decisions, and roadmap load
 - Local kanban board with To Do, Doing, In Review, Blocked, and Done columns
 - Tiered sections for Core Release, Post Release, and Future Content
@@ -61,6 +62,8 @@ On first run, the server creates local files from the committed examples:
 - `sample.state.json` -> `state.json`
 
 The generated `config.json`, `state.json`, and `backups/` folder are ignored by Git. They are your local working data.
+
+When the board is blank or still on the demo sample, Agent Board opens a template chooser so new users can start from a blank board, demo board, software project, creator launch, research project, or operations tracker. You can reopen it later from `Templates` in the header.
 
 ## Local Files
 
@@ -114,6 +117,10 @@ Click `Backup` in the header to create a timestamped copy of `state.json` in `ba
 ## Import And Export
 
 Use `Export` to download a full JSON copy of the board. Exports include `app`, `schemaVersion`, and `version` metadata so future forks can identify compatible board files. Use `Import` to replace the current local board with a compatible JSON file. Agent Board still accepts older item-array exports, adds current metadata on save, and warns before importing unknown newer schemas. Create a backup first if the current board matters.
+
+## Templates
+
+Use `Templates` to replace the current board with a practical starter workflow. Templates are intentionally generic and local-only: applying one writes to your ignored `state.json`, not to the committed sample. Create a backup first if the current board matters.
 
 ## Focus Dashboard
 
