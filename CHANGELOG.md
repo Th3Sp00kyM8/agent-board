@@ -4,6 +4,19 @@ All notable changes to Agent Board will be documented in this file.
 
 The format is based on Keep a Changelog, and this project uses simple `0.x` versions while the tool is early.
 
+## [0.9.0] - 2026-06-27
+
+### Added
+
+- Keyboard-selected command palette results with ArrowUp, ArrowDown, Home, End, and Enter support
+- Import field mapping for common custom schema names such as status, priority, assignee, dependsOn, and risk
+- Project Map filters for domain, owner, and roadmap stage
+
+### Changed
+
+- Import preview now reports recognized field mappings before replacement
+- Project Map dependency, blocker, missing-link, domain, and roadmap counts now reflect active map filters
+
 ## [0.8.0] - 2026-06-27
 
 ### Added

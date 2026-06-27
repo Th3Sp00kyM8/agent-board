@@ -16,9 +16,9 @@ Agent Board is intentionally small and local-first. The goal is to stay easy to 
 ## Likely Improvements
 
 - More template presets and template customization controls
-- Keyboard result selection and richer recent-item jump history
-- Import field-mapping controls for custom schema changes
-- Dependency graph filtering by domain, owner, and roadmap stage
+- Richer recent-item jump history
+- Configurable import field-mapping controls for custom schema changes
+- Saved Project Map filter presets
 - Export presets for risk reviews, decision logs, and roadmap planning
 - Better validation messages for imported JSON files
 - More sample board presets for common workflows

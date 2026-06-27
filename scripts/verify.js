@@ -267,6 +267,9 @@ function verifyReleaseAssets() {
   expect(readme.includes('fuzzy-ranked'), 'README should document fuzzy-ranked command search.');
   expect(readme.includes('dry-run validation'), 'README should document import dry-run validation.');
   expect(readme.includes('arrow keys to move focus'), 'README should document keyboard focus navigation.');
+  expect(readme.includes('keyboard-selected'), 'README should document keyboard-selected command results.');
+  expect(readme.includes('Import field mapping'), 'README should document import field mapping.');
+  expect(readme.includes('domain, owner, and roadmap filters'), 'README should document Project Map filters.');
   expect(readme.includes('Focus Dashboard'), 'README should document the Focus Dashboard feature.');
   expect(readme.includes('Project Map'), 'README should document the Project Map feature.');
   expect(readme.includes('schemaVersion'), 'README should document board schema metadata.');

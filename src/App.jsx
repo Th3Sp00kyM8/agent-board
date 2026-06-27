@@ -41,6 +41,24 @@ const KNOWN_ITEM_FIELDS = [
   'createdAt', 'updatedAt', 'columnEnteredAt', 'domain', 'dependencies',
   'riskLevel', 'roadmapStage', 'decisionStatus', 'owner',
 ];
+const IMPORT_FIELD_ALIASES = {
+  path: ['key', 'ref', 'number'],
+  title: ['name', 'summary', 'task'],
+  description: ['details', 'body'],
+  column: ['status', 'state'],
+  severity: ['priority', 'impact'],
+  size: ['estimate', 'effort'],
+  source: ['origin'],
+  releaseTier: ['tier', 'release_tier', 'release'],
+  candidateRound: ['plannedCycle', 'planned_cycle', 'plannedSprint', 'planned_sprint', 'milestone'],
+  actualRound: ['completedCycle', 'completed_cycle', 'completedSprint', 'completed_sprint'],
+  domain: ['area', 'category', 'team'],
+  dependencies: ['dependsOn', 'depends_on', 'blockedBy', 'blocked_by'],
+  riskLevel: ['risk', 'risk_level'],
+  roadmapStage: ['roadmap', 'stage'],
+  decisionStatus: ['decision', 'decision_status'],
+  owner: ['assignee', 'responsible', 'lead'],
+};
 
 const DOMAIN_COLORS = {
   Delivery: 'bg-blue-900/40 text-blue-300 border-blue-700/40',
@@ -316,6 +334,27 @@ function createStatePayload(items, sprintBoard, extra = {}) {
   };
 }
 
+function mapImportItemFields(rawItems) {
+  const mappingCounts = {};
+  const items = rawItems.map(item => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return item;
+    const mapped = { ...item };
+    for (const [targetField, aliases] of Object.entries(IMPORT_FIELD_ALIASES)) {
+      if (mapped[targetField] !== undefined && mapped[targetField] !== null && mapped[targetField] !== '') continue;
+      const alias = aliases.find(key => mapped[key] !== undefined && mapped[key] !== null && mapped[key] !== '');
+      if (!alias) continue;
+      mapped[targetField] = mapped[alias];
+      const mappingKey = `${alias} -> ${targetField}`;
+      mappingCounts[mappingKey] = (mappingCounts[mappingKey] || 0) + 1;
+    }
+    return mapped;
+  });
+  const mappings = Object.entries(mappingCounts)
+    .sort((a, b) => b[1] - a[1])
+    .map(([mapping, count]) => ({ mapping, count }));
+  return { items, mappings };
+}
+
 function normalizeStatePayload(data) {
   const warnings = [];
   let importedItems = null;
@@ -338,6 +377,8 @@ function normalizeStatePayload(data) {
     throw new Error('expected an items array or an export object with { items, sprintBoard }');
   }
 
+  const mappedImport = mapImportItemFields(importedItems);
+  importedItems = mappedImport.items;
   const validation = validateImportDryRun(data, importedItems, importedSprint);
   warnings.push(...validation.warnings);
 
@@ -347,6 +388,7 @@ function normalizeStatePayload(data) {
     schemaVersion,
     sourceVersion,
     warnings,
+    mappings: mappedImport.mappings,
     validation,
   };
 }
@@ -603,6 +645,7 @@ export default function App() {
   const [insightsExpanded, setInsightsExpanded] = useState(true);
   const [undoState, setUndoState] = useState(null);
   const [focusedItemId, setFocusedItemId] = useState(null);
+  const [projectMapFilters, setProjectMapFilters] = useState({ domain: 'All', owner: 'All', roadmapStage: 'All' });
   // Set of "column:tier" strings indicating collapsed sections
   const [collapsedSections, setCollapsedSections] = useState(() => new Set());
 
@@ -779,8 +822,24 @@ export default function App() {
   const sources = ['All', ...Array.from(new Set(items.map(i => i.source.split(' ')[0]))).sort()];
   const agentStatus = deriveAgentStatus(items);
   const dependencyTrace = buildDependencyTrace(items);
-  const domainCounts = countBy(items, 'domain');
-  const roadmapCounts = countBy(items, 'roadmapStage');
+  const projectMapDomains = ['All', ...PROJECT_DOMAINS.filter(domain => items.some(item => item.domain === domain))];
+  const projectMapOwners = ['All', ...Array.from(new Set(items.map(item => (item.owner || '').trim()).filter(Boolean))).sort()];
+  const projectMapMatches = (item) => {
+    if (projectMapFilters.domain !== 'All' && item.domain !== projectMapFilters.domain) return false;
+    if (projectMapFilters.owner !== 'All' && (item.owner || '').trim() !== projectMapFilters.owner) return false;
+    if (projectMapFilters.roadmapStage !== 'All' && item.roadmapStage !== projectMapFilters.roadmapStage) return false;
+    return true;
+  };
+  const projectMapItems = items.filter(projectMapMatches);
+  const projectMapIds = new Set(projectMapItems.map(item => item.id));
+  const projectMapTrace = {
+    edges: dependencyTrace.edges.filter(edge => projectMapIds.has(edge.from.id) || projectMapIds.has(edge.to.id)),
+    blocked: dependencyTrace.blocked.filter(edge => projectMapIds.has(edge.item.id) || projectMapIds.has(edge.dependency.id)),
+    missing: dependencyTrace.missing.filter(edge => projectMapIds.has(edge.item.id)),
+  };
+  const projectMapFiltersActive = Object.values(projectMapFilters).some(value => value !== 'All');
+  const domainCounts = countBy(projectMapItems, 'domain');
+  const roadmapCounts = countBy(projectMapItems, 'roadmapStage');
   const riskItems = items.filter(i => i.riskLevel && i.riskLevel !== 'None').sort((a, b) => RISK_LEVELS.indexOf(b.riskLevel) - RISK_LEVELS.indexOf(a.riskLevel));
   const decisionItems = items.filter(i => i.decisionStatus && i.decisionStatus !== 'None');
   const openRiskItems = riskItems.filter(i => i.column !== 'Done');
@@ -1445,28 +1504,42 @@ export default function App() {
               <button onClick={() => setInsightsExpanded(!insightsExpanded)} className="w-full px-3 py-2 flex items-center justify-between text-xs hover:bg-slate-800/50">
                 <div className="flex items-center gap-2 text-slate-300 font-semibold"><GitBranch size={12} className="text-cyan-400" />Project Map</div>
                 <div className="flex items-center gap-2 text-[10px] text-slate-500">
-                  <span>{dependencyTrace.edges.length} links</span>
-                  <span>{dependencyTrace.missing.length} missing</span>
+                  <span>{projectMapTrace.edges.length} links</span>
+                  <span>{projectMapTrace.missing.length} missing</span>
+                  {projectMapFiltersActive && <span className="text-blue-300">filtered</span>}
                   {insightsExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                 </div>
               </button>
               {insightsExpanded && (
                 <div className="px-3 pb-3 pt-1 border-t border-slate-800 text-xs space-y-2">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-1.5">
+                    <select aria-label="Filter project map by domain" value={projectMapFilters.domain} onChange={e => setProjectMapFilters({ ...projectMapFilters, domain: e.target.value })} className="bg-slate-950 border border-slate-800 rounded px-2 py-1 text-[10px] text-slate-300">
+                      {projectMapDomains.map(domain => <option key={domain}>{domain}</option>)}
+                    </select>
+                    <select aria-label="Filter project map by owner" value={projectMapFilters.owner} onChange={e => setProjectMapFilters({ ...projectMapFilters, owner: e.target.value })} className="bg-slate-950 border border-slate-800 rounded px-2 py-1 text-[10px] text-slate-300">
+                      {projectMapOwners.map(owner => <option key={owner} value={owner}>{owner === 'All' ? 'All owners' : owner}</option>)}
+                    </select>
+                    <select aria-label="Filter project map by roadmap stage" value={projectMapFilters.roadmapStage} onChange={e => setProjectMapFilters({ ...projectMapFilters, roadmapStage: e.target.value })} className="bg-slate-950 border border-slate-800 rounded px-2 py-1 text-[10px] text-slate-300">
+                      {['All', ...ROADMAP_STAGES].map(stage => <option key={stage} value={stage}>{stage === 'All' ? 'All stages' : stage}</option>)}
+                    </select>
+                    <button onClick={() => setProjectMapFilters({ domain: 'All', owner: 'All', roadmapStage: 'All' })} disabled={!projectMapFiltersActive} className={`px-2 py-1 rounded text-[10px] border ${projectMapFiltersActive ? 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200' : 'bg-slate-950 border-slate-900 text-slate-600 cursor-not-allowed'}`}>Clear map filters</button>
+                  </div>
                   <div className="grid grid-cols-3 gap-1 text-center">
-                    <div className="bg-slate-950/50 border border-slate-800 rounded p-2"><div className="text-base text-slate-100 font-bold">{dependencyTrace.edges.length}</div><div className="text-[9px] text-slate-500">dependencies</div></div>
-                    <div className="bg-slate-950/50 border border-slate-800 rounded p-2"><div className="text-base text-red-300 font-bold">{dependencyTrace.blocked.length}</div><div className="text-[9px] text-slate-500">blocked</div></div>
-                    <div className="bg-slate-950/50 border border-slate-800 rounded p-2"><div className="text-base text-amber-300 font-bold">{dependencyTrace.missing.length}</div><div className="text-[9px] text-slate-500">missing</div></div>
+                    <div className="bg-slate-950/50 border border-slate-800 rounded p-2"><div className="text-base text-slate-100 font-bold">{projectMapTrace.edges.length}</div><div className="text-[9px] text-slate-500">dependencies</div></div>
+                    <div className="bg-slate-950/50 border border-slate-800 rounded p-2"><div className="text-base text-red-300 font-bold">{projectMapTrace.blocked.length}</div><div className="text-[9px] text-slate-500">blocked</div></div>
+                    <div className="bg-slate-950/50 border border-slate-800 rounded p-2"><div className="text-base text-amber-300 font-bold">{projectMapTrace.missing.length}</div><div className="text-[9px] text-slate-500">missing</div></div>
                   </div>
                   <div className="grid grid-cols-4 gap-1">
                     {ROADMAP_STAGES.map(stage => <button key={stage} onClick={() => setSearch(stage)} className="bg-slate-950/50 hover:bg-slate-800 border border-slate-800 rounded p-1 text-center"><div className="text-sm text-slate-100 font-bold">{roadmapCounts[stage] || 0}</div><div className="text-[9px] text-slate-500">{stage}</div></button>)}
                   </div>
                   <div className="space-y-1 max-h-20 overflow-y-auto tk-vscroll">
-                    {pendingDecisionItems.slice(0, 3).map(item => <button key={item.id} onClick={() => setViewingItem(item)} className="block w-full text-left text-[10px] text-slate-400 hover:text-slate-200 truncate"><span className="text-amber-300">{item.decisionStatus}</span> - {item.path} {item.title}</button>)}
-                    {dependencyTrace.missing.slice(0, 2).map(edge => <button key={edge.item.id + edge.dependency} onClick={() => setViewingItem(edge.item)} className="block w-full text-left text-[10px] text-amber-300 truncate">{edge.item.path} missing link: {edge.dependency}</button>)}
-                    {pendingDecisionItems.length === 0 && dependencyTrace.missing.length === 0 && <div className="text-[10px] text-slate-500 italic">No pending decisions or missing links.</div>}
+                    {pendingDecisionItems.filter(projectMapMatches).slice(0, 3).map(item => <button key={item.id} onClick={() => setViewingItem(item)} className="block w-full text-left text-[10px] text-slate-400 hover:text-slate-200 truncate"><span className="text-amber-300">{item.decisionStatus}</span> - {item.path} {item.title}</button>)}
+                    {projectMapTrace.missing.slice(0, 2).map(edge => <button key={edge.item.id + edge.dependency} onClick={() => setViewingItem(edge.item)} className="block w-full text-left text-[10px] text-amber-300 truncate">{edge.item.path} missing link: {edge.dependency}</button>)}
+                    {pendingDecisionItems.filter(projectMapMatches).length === 0 && projectMapTrace.missing.length === 0 && <div className="text-[10px] text-slate-500 italic">No pending decisions or missing links for this map view.</div>}
                   </div>
                   <div className="flex flex-wrap gap-1">
                     {Object.entries(domainCounts).slice(0, 8).map(([domain, count]) => <span key={domain} className={'text-[9px] px-1.5 py-0.5 rounded border ' + (DOMAIN_COLORS[domain] || 'bg-slate-800 text-slate-300 border-slate-600')}>{domain} {count}</span>)}
+                    {projectMapItems.length === 0 && <span className="text-[10px] text-slate-500 italic">No items match these map filters.</span>}
                   </div>
                 </div>
               )}
@@ -1845,6 +1918,17 @@ function ImportConfirmModal({ imported, currentItems, onCancel, onConfirm }) {
               {imported.warnings.map(w => <div key={w}>- {w}</div>)}
             </div>
           )}
+          {imported.mappings?.length > 0 && (
+            <div className="bg-blue-950/20 border border-blue-900/50 rounded p-2">
+              <div className="text-[10px] uppercase tracking-wider text-blue-300 mb-1">Field Mapping</div>
+              <div className="text-[11px] text-slate-400 mb-1">Recognized custom field names and filled Agent Board fields before validation.</div>
+              <div className="flex flex-wrap gap-1">
+                {imported.mappings.slice(0, 8).map(({ mapping, count }) => (
+                  <span key={mapping} className="px-1.5 py-0.5 rounded bg-blue-900/30 border border-blue-800/50 text-blue-200">{mapping} ({count})</span>
+                ))}
+              </div>
+            </div>
+          )}
           <div>
             <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-1">Incoming Preview</div>
             <div className="space-y-1">
@@ -1885,6 +1969,7 @@ function ImportSummary({ summary }) {
 function CommandPalette({ actions, recentCommandIds = [], onCommandRun, items, workstreamLabel, shortcutLabel, onOpenItem, onClose }) {
   const modalRef = useFocusTrap(true);
   const [query, setQuery] = useState('');
+  const [selectedIndex, setSelectedIndex] = useState(0);
   const normalizedQuery = query.trim().toLowerCase();
   const recentActions = recentCommandIds
     .map(id => actions.find(action => action.id === id))
@@ -1908,6 +1993,18 @@ function CommandPalette({ actions, recentCommandIds = [], onCommandRun, items, w
     item => [item.path, item.title, item.description, item.owner, item.domain, item.source, item.column, item.severity, item.riskLevel, item.decisionStatus, item.roadmapStage, ...(item.dependencies || [])].join(' '),
     8
   ) : [];
+  const recentEntries = !normalizedQuery ? recentActions.map(action => ({ type: 'action', action, key: `recent:${action.id}` })) : [];
+  const actionEntries = actionResults.map(action => ({ type: 'action', action, key: `action:${action.id}` }));
+  const itemEntries = itemResults.map(item => ({ type: 'item', item, key: `item:${item.id}` }));
+  const paletteEntries = [...recentEntries, ...actionEntries, ...itemEntries];
+  const selectedEntry = paletteEntries[selectedIndex] || paletteEntries[0] || null;
+  const selectedKey = selectedEntry?.key;
+  useEffect(() => {
+    setSelectedIndex(0);
+  }, [normalizedQuery]);
+  useEffect(() => {
+    if (selectedIndex >= paletteEntries.length) setSelectedIndex(Math.max(0, paletteEntries.length - 1));
+  }, [paletteEntries.length, selectedIndex]);
   function runAction(action) {
     onClose();
     onCommandRun?.(action.id);
@@ -1917,12 +2014,39 @@ function CommandPalette({ actions, recentCommandIds = [], onCommandRun, items, w
     onClose();
     onOpenItem(item);
   }
+  function runEntry(entry) {
+    if (!entry) return;
+    if (entry.type === 'item') openItem(entry.item);
+    else runAction(entry.action);
+  }
+  function selectEntryByKey(key) {
+    const index = paletteEntries.findIndex(entry => entry.key === key);
+    if (index >= 0) setSelectedIndex(index);
+  }
+  function handlePaletteKeyDown(e) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedIndex(index => Math.min(index + 1, Math.max(paletteEntries.length - 1, 0)));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedIndex(index => Math.max(index - 1, 0));
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      setSelectedIndex(0);
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      setSelectedIndex(Math.max(paletteEntries.length - 1, 0));
+    } else if (e.key === 'Enter' && selectedEntry) {
+      e.preventDefault();
+      runEntry(selectedEntry);
+    }
+  }
   return (
     <div className="fixed inset-0 bg-black/70 flex items-start justify-center p-4 pt-[12vh] z-50" role="dialog" aria-modal="true" aria-label="Command palette" onClick={onClose}>
       <div ref={modalRef} className="bg-slate-900 border border-slate-700 rounded-lg max-w-2xl w-full shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-2 px-3 py-3 border-b border-slate-800">
           <Command size={16} className="text-blue-400 flex-shrink-0" />
-          <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search commands or jump to work..." className="flex-1 bg-transparent outline-none text-sm text-slate-100 placeholder-slate-500" autoFocus />
+          <input value={query} onChange={e => setQuery(e.target.value)} onKeyDown={handlePaletteKeyDown} placeholder="Search commands or jump to work..." className="flex-1 bg-transparent outline-none text-sm text-slate-100 placeholder-slate-500" autoFocus />
           <div className="hidden sm:flex items-center gap-1 text-[10px] text-slate-500 border border-slate-700 rounded px-1.5 py-0.5">{shortcutLabel}</div>
           <div className="hidden sm:flex items-center gap-1 text-[10px] text-slate-500 border border-slate-700 rounded px-1.5 py-0.5"><CornerDownLeft size={10} />run</div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-200" aria-label="Close command palette"><X size={16} /></button>
@@ -1933,7 +2057,7 @@ function CommandPalette({ actions, recentCommandIds = [], onCommandRun, items, w
               <div className="text-[10px] uppercase tracking-wider text-slate-500 px-2 py-1">Recent</div>
               <div className="flex flex-wrap gap-1.5">
                 {recentActions.map(action => (
-                  <button key={action.id} onClick={() => runAction(action)} className="px-2 py-1 rounded bg-blue-950/30 hover:bg-blue-900/40 border border-blue-800/40 text-blue-200 flex items-center gap-1">
+                  <button key={action.id} onMouseEnter={() => selectEntryByKey(`recent:${action.id}`)} onClick={() => runAction(action)} className={`px-2 py-1 rounded border flex items-center gap-1 ${selectedKey === `recent:${action.id}` ? 'bg-blue-800/50 border-blue-500 text-white' : 'bg-blue-950/30 hover:bg-blue-900/40 border-blue-800/40 text-blue-200'}`}>
                     {action.icon}<span>{action.label}</span>
                   </button>
                 ))}
@@ -1945,7 +2069,7 @@ function CommandPalette({ actions, recentCommandIds = [], onCommandRun, items, w
               <div className="text-[10px] uppercase tracking-wider text-slate-500 px-2 py-1">{group}</div>
               <div className="space-y-1">
                 {groupActions.map(action => (
-                  <button key={action.id} onClick={() => runAction(action)} className="w-full px-2 py-2 rounded bg-slate-950/40 hover:bg-slate-800 border border-slate-800 hover:border-slate-600 text-left flex items-center gap-2">
+                  <button key={action.id} onMouseEnter={() => selectEntryByKey(`action:${action.id}`)} onClick={() => runAction(action)} className={`w-full px-2 py-2 rounded border text-left flex items-center gap-2 ${selectedKey === `action:${action.id}` ? 'bg-slate-800 border-blue-500' : 'bg-slate-950/40 hover:bg-slate-800 border-slate-800 hover:border-slate-600'}`}>
                     <span className="w-6 h-6 rounded bg-slate-800 text-blue-300 flex items-center justify-center flex-shrink-0">{action.icon}</span>
                     <span className="min-w-0 flex-1">
                       <span className="block text-slate-100 font-medium truncate">{action.label}</span>
@@ -1961,7 +2085,7 @@ function CommandPalette({ actions, recentCommandIds = [], onCommandRun, items, w
               <div className="text-[10px] uppercase tracking-wider text-slate-500 px-2 py-1">Jump To Work</div>
               <div className="space-y-1">
                 {itemResults.map(item => (
-                  <button key={item.id} onClick={() => openItem(item)} className="w-full px-2 py-2 rounded bg-slate-950/40 hover:bg-slate-800 border border-slate-800 hover:border-slate-600 text-left flex items-center gap-2">
+                  <button key={item.id} onMouseEnter={() => selectEntryByKey(`item:${item.id}`)} onClick={() => openItem(item)} className={`w-full px-2 py-2 rounded border text-left flex items-center gap-2 ${selectedKey === `item:${item.id}` ? 'bg-slate-800 border-blue-500' : 'bg-slate-950/40 hover:bg-slate-800 border-slate-800 hover:border-slate-600'}`}>
                     <span className="font-mono text-[10px] text-blue-300 bg-blue-900/30 px-1.5 py-1 rounded flex-shrink-0">{item.path}</span>
                     <span className="min-w-0 flex-1">
                       <span className="block text-slate-100 font-medium truncate">{item.title}</span>
