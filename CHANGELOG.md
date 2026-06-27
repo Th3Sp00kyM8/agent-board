@@ -4,6 +4,19 @@ All notable changes to Agent Board will be documented in this file.
 
 The format is based on Keep a Changelog, and this project uses simple `0.x` versions while the tool is early.
 
+## [0.6.0] - 2026-06-27
+
+### Added
+
+- Command palette opened from `Ctrl+K` / `Cmd+K` or the header `Commands` button
+- Command results for adding work, templates, filters, blocked work, risks, sync, export, backup, settings, reset, and item jump
+- Keyboard card controls: Enter opens a card, Space selects it, and Alt+Arrow Left/Right moves it across columns
+- Focus trapping for the command palette, template chooser, settings modal, item detail modal, and item editor
+
+### Changed
+
+- Updated README docs around keyboard workflow and command access
+
 ## [0.5.0] - 2026-06-27
 
 ### Added

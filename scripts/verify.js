@@ -258,6 +258,9 @@ function verifyReleaseAssets() {
   expect(readme.includes('Start Here checklist'), 'README should document the Start Here onboarding checklist.');
   expect(readme.includes('essentials-first item editor'), 'README should document the simplified editor.');
   expect(readme.includes('undo snackbar'), 'README should document undo affordances.');
+  expect(readme.includes('Command palette'), 'README should document the command palette.');
+  expect(readme.includes('Keyboard Workflow'), 'README should document keyboard workflow.');
+  expect(readme.includes('Alt+Arrow'), 'README should document keyboard card movement.');
   expect(readme.includes('Focus Dashboard'), 'README should document the Focus Dashboard feature.');
   expect(readme.includes('Project Map'), 'README should document the Project Map feature.');
   expect(readme.includes('schemaVersion'), 'README should document board schema metadata.');

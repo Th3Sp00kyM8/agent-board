@@ -16,9 +16,10 @@ It is designed for private project planning, not as a hosted multi-user service.
 - Start Here checklist that guides a new board through setup without separate documentation
 - Focus Dashboard that immediately surfaces attention items, blockers, next work, risks, decisions, and roadmap load
 - Local kanban board with To Do, Doing, In Review, Blocked, and Done columns
+- Command palette for quick actions, board filters, exports, backups, settings, templates, and item jump
 - Essentials-first item editor with advanced planning fields available on demand
 - Undo snackbar for moves, bulk edits, deletes, reset, and template application
-- Visible keyboard focus states for common controls
+- Visible keyboard focus states, focus-trapped main modals, and keyboard card controls
 - Tiered sections for Core Release, Post Release, and Future Content
 - Configurable project title and visible labels for workstreams and cycles
 - Sprint board for last/current/next cycle notes
@@ -133,6 +134,12 @@ Use `Templates` to replace the current board with a practical starter workflow. 
 Click `Add work` or edit any card to open the essentials-first item editor. The default view asks for the fields most people need immediately: work item id, title, description, owner, domain, status, priority, and size. Use `Advanced planning fields` for release tier, source, cycle assignment, risk, roadmap, decision state, dependencies, notes, and reserved status.
 
 Most risky changes show a short-lived undo snackbar, including card moves, bulk edits, deletes, resets, and template application.
+
+## Keyboard Workflow
+
+Open the command palette with `Ctrl+K` on Windows/Linux or `Cmd+K` on macOS. Use it to add work, open templates, show filters, focus blocked work, copy a chat sync, export, create a backup, open settings, reset after confirmation, or jump directly to a work item.
+
+Work cards are keyboard-operable: press `Enter` to open the focused card, `Space` to select it, and `Alt+Arrow Left` / `Alt+Arrow Right` to move it between board columns. The command palette, template chooser, settings modal, detail modal, and item editor keep focus inside the active dialog until closed.
 
 ## Focus Dashboard
 

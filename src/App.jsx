@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Plus, X, Edit2, Trash2, Copy, Download, Upload, Search, AlertTriangle, RotateCcw, Lock, ChevronDown, ChevronRight, ChevronLeft, Check, Calendar, Tag, FileText, ArrowRight, Palette, MessageSquare, Info, Target, Zap, AlertCircle, Save, WifiOff, Layers, Settings, GitBranch, ShieldAlert, Map, Scale, Undo2 } from 'lucide-react';
+import { Plus, X, Edit2, Trash2, Copy, Download, Upload, Search, AlertTriangle, RotateCcw, Lock, ChevronDown, ChevronRight, ChevronLeft, Check, Calendar, Tag, FileText, ArrowRight, Palette, MessageSquare, Info, Target, Zap, AlertCircle, Save, WifiOff, Layers, Settings, GitBranch, ShieldAlert, Map, Scale, Undo2, Command, CornerDownLeft } from 'lucide-react';
 
 const BOARD_SCHEMA_VERSION = 2;
 const BOARD_STATE_VERSION = 'agent-board-state-v2';
@@ -379,6 +379,45 @@ function deriveAgentStatus(items) {
   return { developer, aiAgent, reviewer };
 }
 
+function useFocusTrap(active = true) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!active) return undefined;
+    const container = ref.current;
+    if (!container) return undefined;
+    const previous = document.activeElement;
+    const focusableSelector = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+    function getFocusable() {
+      return Array.from(container.querySelectorAll(focusableSelector)).filter(el => !el.disabled && el.offsetParent !== null);
+    }
+    const timer = setTimeout(() => {
+      const focusable = getFocusable();
+      if (focusable.length) focusable[0].focus();
+    }, 0);
+    function onKeyDown(e) {
+      if (e.key !== 'Tab') return;
+      const focusable = getFocusable();
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('keydown', onKeyDown);
+      if (previous && typeof previous.focus === 'function') previous.focus();
+    };
+  }, [active]);
+  return ref;
+}
+
 export default function App() {
   const [items, setItems] = useState([]);
   const [sprintBoard, setSprintBoard] = useState(DEFAULT_SPRINT_BOARD);
@@ -404,6 +443,7 @@ export default function App() {
   const [showExport, setShowExport] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showTemplateChooser, setShowTemplateChooser] = useState(false);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [configSaveStatus, setConfigSaveStatus] = useState('idle');
   const [configError, setConfigError] = useState('');
   const [copiedFlag, setCopiedFlag] = useState(false);
@@ -490,8 +530,14 @@ export default function App() {
 
   useEffect(() => {
     function onKey(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setShowCommandPalette(true);
+        return;
+      }
       if (e.key === 'Escape') {
-        if (viewingItem) setViewingItem(null);
+        if (showCommandPalette) setShowCommandPalette(false);
+        else if (viewingItem) setViewingItem(null);
         else if (editingItem) setEditingItem(null);
         else if (showAdd) setShowAdd(false);
         else if (showExport) setShowExport(false);
@@ -507,7 +553,7 @@ export default function App() {
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [viewingItem, editingItem, showAdd, showExport, showSettings, showTemplateChooser, showResetConfirm, showImportConfirm, showBulkMove, showBulkTier, showBulkRound, showAbout]);
+  }, [showCommandPalette, viewingItem, editingItem, showAdd, showExport, showSettings, showTemplateChooser, showResetConfirm, showImportConfirm, showBulkMove, showBulkTier, showBulkRound, showAbout]);
 
   function updateScrollState() {
     const c = scrollContainerRef.current;
@@ -771,6 +817,15 @@ export default function App() {
     setSelectedIds(selectedIds.includes(id) ? selectedIds.filter(s => s !== id) : [...selectedIds, id]);
   }
   function clearSelection() { setSelectedIds([]); }
+  function clearFilters() {
+    setSearch('');
+    setFilterColumn('All');
+    setFilterPath('');
+    setFilterRound('');
+    setFilterSource('All');
+    setFilterSeverity('All');
+    setFilterReleaseTier('All');
+  }
   function closeTemplateChooser() {
     window.localStorage?.setItem('agent-board-template-chooser-seen', '1');
     setShowTemplateChooser(false);
@@ -809,6 +864,22 @@ export default function App() {
     setShowResetConfirm(false);
     setShowTemplateChooser(true);
     setSelectedIds([]);
+  }
+
+  function handleCardKeyDown(e, item) {
+    if (e.target !== e.currentTarget) return;
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      setViewingItem(item);
+    } else if (e.key === ' ') {
+      e.preventDefault();
+      toggleSelect(item.id, e);
+    } else if (e.altKey && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
+      e.preventDefault();
+      const currentIndex = COLUMNS.indexOf(item.column);
+      const nextIndex = currentIndex + (e.key === 'ArrowRight' ? 1 : -1);
+      if (nextIndex >= 0 && nextIndex < COLUMNS.length) moveItem(item.id, COLUMNS[nextIndex]);
+    }
   }
 
   async function createBackup() {
@@ -1017,6 +1088,19 @@ export default function App() {
   }
 
   const existingPaths = items.map(i => i.path);
+  const commandActions = [
+    { id: 'add', label: 'Add work', detail: 'Create a new item', keywords: 'new item create task card', icon: <Plus size={13} />, run: () => setShowAdd(true) },
+    { id: 'templates', label: 'Templates', detail: 'Choose a starter workflow', keywords: 'starter sample workflow board', icon: <Palette size={13} />, run: () => setShowTemplateChooser(true) },
+    { id: 'filters', label: showFilters ? 'Hide filters' : 'Show filters', detail: 'Toggle board filters', keywords: 'filter search column severity', icon: <Search size={13} />, run: () => setShowFilters(!showFilters) },
+    { id: 'clear-filters', label: 'Clear filters', detail: 'Return to the full board', keywords: 'reset search all columns', icon: <X size={13} />, run: clearFilters },
+    { id: 'blocked', label: 'Show blocked work', detail: `${blockedItems.length} blocked items`, keywords: 'blocker stuck risk wait', icon: <AlertTriangle size={13} />, run: () => { clearFilters(); setFilterColumn('Blocked'); } },
+    { id: 'risks', label: 'Show open risks', detail: `${openRiskItems.length} open risks`, keywords: 'risk danger critical high', icon: <ShieldAlert size={13} />, run: () => { clearFilters(); setSearch('Risk'); } },
+    { id: 'sync', label: 'Sync to Chat', detail: 'Copy active-state summary', keywords: 'copy handoff assistant export', icon: <MessageSquare size={13} />, run: syncToChat },
+    { id: 'export', label: 'Export', detail: 'Copy summary or download JSON', keywords: 'download json state backup handoff', icon: <Download size={13} />, run: () => setShowExport(true) },
+    { id: 'backup', label: 'Backup', detail: 'Create a timestamped restore point', keywords: 'save restore copy state', icon: <Save size={13} />, run: createBackup },
+    { id: 'settings', label: 'Settings', detail: 'Project title and labels', keywords: 'project labels config', icon: <Settings size={13} />, run: openSettings },
+    { id: 'reset', label: 'Reset board', detail: 'Clear local state after confirmation', keywords: 'wipe clear empty start over', icon: <RotateCcw size={13} />, run: () => setShowResetConfirm(true) },
+  ];
 
   return (
     <div className="h-screen bg-slate-950 text-slate-100 flex flex-col overflow-hidden">
@@ -1050,6 +1134,7 @@ export default function App() {
               <button onClick={() => scrollByColumn(-1)} disabled={!canScrollLeft} className={`px-2 py-1 rounded text-xs flex items-center gap-1 ${canScrollLeft ? 'bg-slate-800 hover:bg-slate-700' : 'bg-slate-900 text-slate-600 cursor-not-allowed'}`}><ChevronLeft size={12} /></button>
               <button onClick={() => scrollByColumn(1)} disabled={!canScrollRight} className={`px-2 py-1 rounded text-xs flex items-center gap-1 ${canScrollRight ? 'bg-slate-800 hover:bg-slate-700' : 'bg-slate-900 text-slate-600 cursor-not-allowed'}`}><ChevronRight size={12} /></button>
               <div className="w-px h-4 bg-slate-700 mx-1" />
+              <button onClick={() => setShowCommandPalette(true)} className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded text-xs flex items-center gap-1" title="Open command palette (Ctrl+K)"><Command size={12} />Commands</button>
               <button onClick={() => setShowAdd(true)} className="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 rounded text-xs flex items-center gap-1"><Plus size={12} />Add</button>
               <button onClick={() => setShowFilters(!showFilters)} className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded text-xs flex items-center gap-1">{showFilters ? <ChevronDown size={12} /> : <ChevronRight size={12} />}Filters</button>
               <button onClick={syncToChat} className={`px-2.5 py-1 rounded text-xs flex items-center gap-1 transition-colors ${syncFlag ? 'bg-green-700' : 'bg-emerald-700 hover:bg-emerald-600'}`} title="Copy active-state summary to clipboard for pasting to Chat">
@@ -1319,10 +1404,14 @@ export default function App() {
                                   return (
                                     <div
                                       key={item.id}
+                                      role="button"
+                                      tabIndex={0}
+                                      aria-label={`${workstreamLabel} ${item.path}: ${item.title}. Press Enter to open, Space to select, Alt plus arrow keys to move.`}
                                       draggable
                                       onDragStart={(e) => { setDragId(item.id); e.stopPropagation(); }}
                                       onDragEnd={() => { setDragId(null); stopAutoScroll(); }}
                                       onClick={() => setViewingItem(item)}
+                                      onKeyDown={(e) => handleCardKeyDown(e, item)}
                                       className={`bg-slate-900 border-l-2 ${sourceAccent(item.source)} border-y border-r ${selectedIds.includes(item.id) ? 'border-purple-500' : 'border-slate-800'} ${item.reserved ? 'ring-1 ring-amber-700/40' : ''} rounded p-2 cursor-pointer hover:border-slate-600 transition-colors`}
                                     >
                                       <div className="flex items-start justify-between gap-1.5 mb-1">
@@ -1414,6 +1503,7 @@ export default function App() {
           </div>
         )}
 
+        {showCommandPalette && <CommandPalette actions={commandActions} items={items} workstreamLabel={workstreamLabel} onOpenItem={setViewingItem} onClose={() => setShowCommandPalette(false)} />}
         {viewingItem && <TaskDetailModal item={viewingItem} labels={labels} onClose={() => setViewingItem(null)} onEdit={() => { setEditingItem(viewingItem); setViewingItem(null); }} onDelete={(id) => { if (confirm(`Delete ${workstreamLabel.toLowerCase()} ${viewingItem.path}?`)) deleteItem(id); }} onMove={(id, col) => moveItem(id, col)} />}
         {(editingItem || showAdd) && <ItemEditModal item={editingItem} labels={labels} existingPaths={existingPaths} onSave={saveItem} onClose={() => { setEditingItem(null); setShowAdd(false); }} />}
         {showSettings && <SettingsModal config={appConfig} status={configSaveStatus} error={configError} onSave={saveAppConfig} onClose={() => setShowSettings(false)} />}
@@ -1527,13 +1617,85 @@ export default function App() {
   );
 }
 
+function CommandPalette({ actions, items, workstreamLabel, onOpenItem, onClose }) {
+  const modalRef = useFocusTrap(true);
+  const [query, setQuery] = useState('');
+  const normalizedQuery = query.trim().toLowerCase();
+  const actionResults = actions.filter(action => {
+    if (!normalizedQuery) return true;
+    return [action.label, action.detail, action.keywords].join(' ').toLowerCase().includes(normalizedQuery);
+  }).slice(0, normalizedQuery ? 8 : 6);
+  const itemResults = items.filter(item => {
+    if (!normalizedQuery) return false;
+    return [item.path, item.title, item.description, item.owner, item.domain, item.source, item.column, item.severity, item.riskLevel, item.decisionStatus, item.roadmapStage, ...(item.dependencies || [])].join(' ').toLowerCase().includes(normalizedQuery);
+  }).slice(0, 8);
+  function runAction(action) {
+    onClose();
+    action.run();
+  }
+  function openItem(item) {
+    onClose();
+    onOpenItem(item);
+  }
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-start justify-center p-4 pt-[12vh] z-50" role="dialog" aria-modal="true" aria-label="Command palette" onClick={onClose}>
+      <div ref={modalRef} className="bg-slate-900 border border-slate-700 rounded-lg max-w-2xl w-full shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-2 px-3 py-3 border-b border-slate-800">
+          <Command size={16} className="text-blue-400 flex-shrink-0" />
+          <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search commands or jump to work..." className="flex-1 bg-transparent outline-none text-sm text-slate-100 placeholder-slate-500" autoFocus />
+          <div className="hidden sm:flex items-center gap-1 text-[10px] text-slate-500 border border-slate-700 rounded px-1.5 py-0.5"><CornerDownLeft size={10} />run</div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-200" aria-label="Close command palette"><X size={16} /></button>
+        </div>
+        <div className="max-h-[60vh] overflow-y-auto tk-vscroll p-2 text-xs">
+          {actionResults.length > 0 && (
+            <div className="mb-2">
+              <div className="text-[10px] uppercase tracking-wider text-slate-500 px-2 py-1">Actions</div>
+              <div className="space-y-1">
+                {actionResults.map(action => (
+                  <button key={action.id} onClick={() => runAction(action)} className="w-full px-2 py-2 rounded bg-slate-950/40 hover:bg-slate-800 border border-slate-800 hover:border-slate-600 text-left flex items-center gap-2">
+                    <span className="w-6 h-6 rounded bg-slate-800 text-blue-300 flex items-center justify-center flex-shrink-0">{action.icon}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-slate-100 font-medium truncate">{action.label}</span>
+                      <span className="block text-[10px] text-slate-500 truncate">{action.detail}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {itemResults.length > 0 && (
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-slate-500 px-2 py-1">Jump To Work</div>
+              <div className="space-y-1">
+                {itemResults.map(item => (
+                  <button key={item.id} onClick={() => openItem(item)} className="w-full px-2 py-2 rounded bg-slate-950/40 hover:bg-slate-800 border border-slate-800 hover:border-slate-600 text-left flex items-center gap-2">
+                    <span className="font-mono text-[10px] text-blue-300 bg-blue-900/30 px-1.5 py-1 rounded flex-shrink-0">{item.path}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-slate-100 font-medium truncate">{item.title}</span>
+                      <span className="block text-[10px] text-slate-500 truncate">{workstreamLabel} {item.path} - {item.column} - {item.owner || item.domain || item.source}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {actionResults.length === 0 && itemResults.length === 0 && (
+            <div className="px-3 py-8 text-center text-slate-500">No commands or work items match.</div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TemplateChooserModal({ templates, currentCount, onApply, onClose }) {
+  const modalRef = useFocusTrap(true);
   const [selectedId, setSelectedId] = useState(templates[0]?.id || 'blank');
   const selected = templates.find(template => template.id === selectedId) || templates[0];
   const needsConfirm = currentCount > 0;
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50" onClick={onClose}>
-      <div className="bg-slate-900 border border-slate-700 rounded-lg max-w-5xl w-full max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50" role="dialog" aria-modal="true" aria-label="Choose a starting point" onClick={onClose}>
+      <div ref={modalRef} className="bg-slate-900 border border-slate-700 rounded-lg max-w-5xl w-full max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between p-4 border-b border-slate-800">
           <div>
             <h2 className="text-base font-bold flex items-center gap-2"><Palette size={16} className="text-blue-400" />Choose a starting point</h2>
@@ -1623,6 +1785,7 @@ function DashboardList({ title, items, emptyText, accent, onOpen, metaFor }) {
 }
 
 function SettingsModal({ config, status, error, onSave, onClose }) {
+  const modalRef = useFocusTrap(true);
   const [form, setForm] = useState({
     projectName: config.projectName || DEFAULT_APP_CONFIG.projectName,
     workstream: config.labels?.workstream || DEFAULT_APP_CONFIG.labels.workstream,
@@ -1642,8 +1805,8 @@ function SettingsModal({ config, status, error, onSave, onClose }) {
     });
   }
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50" onClick={onClose}>
-      <div className="bg-slate-900 border border-slate-700 rounded-lg max-w-lg w-full p-4" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50" role="dialog" aria-modal="true" aria-label="Settings" onClick={onClose}>
+      <div ref={modalRef} className="bg-slate-900 border border-slate-700 rounded-lg max-w-lg w-full p-4" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-base font-bold flex items-center gap-2"><Settings size={16} className="text-blue-400" />Settings</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-200"><X size={18} /></button>
@@ -1680,14 +1843,15 @@ function SettingsModal({ config, status, error, onSave, onClose }) {
   );
 }
 function TaskDetailModal({ item, labels = DEFAULT_APP_CONFIG.labels, onClose, onEdit, onDelete, onMove }) {
+  const modalRef = useFocusTrap(true);
   const workstreamLabel = labels.workstream || 'Workstream';
   const cycleLabel = labels.cycle || 'Sprint';
   const cycleNoun = cycleLabel.toLowerCase();
   const stale = getStaleInfo(item);
   const tier = RELEASE_TIERS.find(t => t.id === item.releaseTier) || RELEASE_TIERS[0];
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50" onClick={onClose}>
-      <div className="bg-slate-900 border border-slate-700 rounded-lg max-w-2xl w-full max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50" role="dialog" aria-modal="true" aria-label={`${workstreamLabel} ${item.path}: ${item.title}`} onClick={onClose}>
+      <div ref={modalRef} className="bg-slate-900 border border-slate-700 rounded-lg max-w-2xl w-full max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between p-4 border-b border-slate-800">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap mb-1.5">
@@ -1737,6 +1901,7 @@ function TaskDetailModal({ item, labels = DEFAULT_APP_CONFIG.labels, onClose, on
 }
 
 function ItemEditModal({ item, labels = DEFAULT_APP_CONFIG.labels, existingPaths, onSave, onClose }) {
+  const modalRef = useFocusTrap(true);
   const suggestedWorkstream = item ? null : suggestNextPath(existingPaths);
   const workstreamLabel = labels.workstream || 'Workstream';
   const cycleLabel = labels.cycle || 'Sprint';
@@ -1753,7 +1918,7 @@ function ItemEditModal({ item, labels = DEFAULT_APP_CONFIG.labels, existingPaths
   }
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50" role="dialog" aria-modal="true" aria-label={item ? `Edit ${workstreamLabel.toLowerCase()} ${item.path}` : 'Add work item'}>
-      <div className="bg-slate-900 border border-slate-700 rounded-lg max-w-2xl w-full max-h-[90vh] flex flex-col">
+      <div ref={modalRef} className="bg-slate-900 border border-slate-700 rounded-lg max-w-2xl w-full max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between p-3 border-b border-slate-800">
           <div>
             <h2 className="text-base font-bold">{item ? `Edit ${workstreamLabel.toLowerCase()} ${item.path}` : 'Add work'}</h2>
