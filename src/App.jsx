@@ -163,6 +163,15 @@ function countBy(items, field) {
   }, {});
 }
 
+function uniqueItems(items) {
+  const seen = new Set();
+  return items.filter(item => {
+    if (!item || seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
+}
+
 function createStatePayload(items, sprintBoard, extra = {}) {
   return {
     app: BOARD_APP_ID,
@@ -453,7 +462,22 @@ export default function App() {
   const roadmapCounts = countBy(items, 'roadmapStage');
   const riskItems = items.filter(i => i.riskLevel && i.riskLevel !== 'None').sort((a, b) => RISK_LEVELS.indexOf(b.riskLevel) - RISK_LEVELS.indexOf(a.riskLevel));
   const decisionItems = items.filter(i => i.decisionStatus && i.decisionStatus !== 'None');
+  const openRiskItems = riskItems.filter(i => i.column !== 'Done');
+  const pendingDecisionItems = decisionItems.filter(i => i.column !== 'Done' && ['Proposed', 'Deferred'].includes(i.decisionStatus));
   const roadmapItems = items.filter(i => (i.domain === 'Roadmap' || ROADMAP_STAGES.includes(i.roadmapStage)) && i.column !== 'Done');
+  const dependencyBlockedIds = new Set(dependencyTrace.blocked.map(edge => edge.item.id));
+  const missingDependencyIds = new Set(dependencyTrace.missing.map(edge => edge.item.id));
+  const blockedItems = items.filter(i => i.column === 'Blocked');
+  const nextUpItems = items
+    .filter(i => i.column === 'To Do' && !i.reserved && !dependencyBlockedIds.has(i.id) && !missingDependencyIds.has(i.id))
+    .sort((a, b) => RISK_LEVELS.indexOf(b.riskLevel || 'None') - RISK_LEVELS.indexOf(a.riskLevel || 'None'))
+    .slice(0, 5);
+  const needsAttentionItems = uniqueItems([
+    ...dependencyTrace.missing.map(edge => edge.item),
+    ...openRiskItems.filter(i => ['High', 'Critical'].includes(i.riskLevel)),
+    ...blockedItems,
+    ...items.filter(i => getStaleInfo(i)),
+  ]).slice(0, 6);
   const columnCounts = {};
   COLUMNS.forEach(c => {
     columnCounts[c] = {
@@ -865,60 +889,60 @@ export default function App() {
             )}
           </div>
 
-          <div className="bg-slate-900/50 border border-slate-800 rounded mb-2">
-            <button onClick={() => setInsightsExpanded(!insightsExpanded)} className="w-full px-3 py-1.5 flex items-center justify-between text-xs hover:bg-slate-800/50">
-              <div className="flex items-center gap-2 text-slate-300 font-semibold"><GitBranch size={12} className="text-cyan-400" />PROJECT MAP</div>
-              <div className="flex items-center gap-2 text-[10px] text-slate-500">
-                <span>{dependencyTrace.edges.length} dependencies</span>
-                <span>{riskItems.filter(i => i.column !== 'Done').length} open risks</span>
-                <span>{decisionItems.length} decisions</span>
-                <span>{roadmapItems.length} roadmap</span>
-                {insightsExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          <div className="grid grid-cols-1 xl:grid-cols-[1.4fr_1fr] gap-2 mb-2">
+            <div className="bg-slate-900/60 border border-slate-800 rounded p-3">
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <div>
+                  <div className="text-[10px] uppercase tracking-wider text-slate-500">Focus Dashboard</div>
+                  <div className="text-sm font-semibold text-slate-200">Start here</div>
+                </div>
+                <button onClick={() => setShowAdd(true)} className="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 rounded text-xs flex items-center gap-1"><Plus size={12} />Add work</button>
               </div>
-            </button>
-            {insightsExpanded && (
-              <div className="px-3 pb-3 pt-1 border-t border-slate-800 grid grid-cols-1 lg:grid-cols-4 gap-2 text-xs">
-                <div className="bg-slate-950/40 border border-slate-800 rounded p-2 min-h-[112px]">
-                  <div className="flex items-center gap-1 text-cyan-300 font-semibold mb-1"><GitBranch size={12} />Dependency Trace</div>
-                  <div className="grid grid-cols-3 gap-1 text-center mb-2">
-                    <div className="bg-slate-900 rounded p-1"><div className="text-sm text-slate-100 font-bold">{dependencyTrace.edges.length}</div><div className="text-[9px] text-slate-500">edges</div></div>
-                    <div className="bg-slate-900 rounded p-1"><div className="text-sm text-red-300 font-bold">{dependencyTrace.blocked.length}</div><div className="text-[9px] text-slate-500">blocked</div></div>
-                    <div className="bg-slate-900 rounded p-1"><div className="text-sm text-amber-300 font-bold">{dependencyTrace.missing.length}</div><div className="text-[9px] text-slate-500">missing</div></div>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-3">
+                <DashboardMetric label="Needs attention" value={needsAttentionItems.length} tone="amber" icon={<AlertCircle size={14} />} />
+                <DashboardMetric label="Blocked" value={blockedItems.length + dependencyTrace.blocked.length} tone="red" icon={<AlertTriangle size={14} />} />
+                <DashboardMetric label="Next up" value={nextUpItems.length} tone="blue" icon={<ArrowRight size={14} />} />
+                <DashboardMetric label="Open risks" value={openRiskItems.length} tone="red" icon={<ShieldAlert size={14} />} />
+                <DashboardMetric label="Decisions" value={pendingDecisionItems.length} tone="amber" icon={<Scale size={14} />} />
+                <DashboardMetric label="Roadmap" value={roadmapItems.length} tone="purple" icon={<Map size={14} />} />
+              </div>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-2 text-xs">
+                <DashboardList title="Needs Attention" emptyText="Nothing urgent right now." items={needsAttentionItems} accent="text-amber-300" onOpen={setViewingItem} metaFor={(item) => item.column === 'Blocked' ? 'Blocked' : item.riskLevel !== 'None' ? 'Risk ' + item.riskLevel : getStaleInfo(item)?.reason || 'Review'} />
+                <DashboardList title="Blocked By" emptyText="No dependency blockers." items={dependencyTrace.blocked.slice(0, 5).map(edge => edge.item)} accent="text-red-300" onOpen={setViewingItem} metaFor={(item) => { const edge = dependencyTrace.blocked.find(e => e.item.id === item.id); return edge ? 'Waits on ' + edge.dependency.path : 'Blocked'; }} />
+                <DashboardList title="Next Up" emptyText="No ready work in To Do." items={nextUpItems} accent="text-blue-300" onOpen={setViewingItem} metaFor={(item) => item.owner || item.candidateRound || item.source} />
+              </div>
+            </div>
+
+            <div className="bg-slate-900/60 border border-slate-800 rounded">
+              <button onClick={() => setInsightsExpanded(!insightsExpanded)} className="w-full px-3 py-2 flex items-center justify-between text-xs hover:bg-slate-800/50">
+                <div className="flex items-center gap-2 text-slate-300 font-semibold"><GitBranch size={12} className="text-cyan-400" />Project Map</div>
+                <div className="flex items-center gap-2 text-[10px] text-slate-500">
+                  <span>{dependencyTrace.edges.length} links</span>
+                  <span>{dependencyTrace.missing.length} missing</span>
+                  {insightsExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                </div>
+              </button>
+              {insightsExpanded && (
+                <div className="px-3 pb-3 pt-1 border-t border-slate-800 text-xs space-y-2">
+                  <div className="grid grid-cols-3 gap-1 text-center">
+                    <div className="bg-slate-950/50 border border-slate-800 rounded p-2"><div className="text-base text-slate-100 font-bold">{dependencyTrace.edges.length}</div><div className="text-[9px] text-slate-500">dependencies</div></div>
+                    <div className="bg-slate-950/50 border border-slate-800 rounded p-2"><div className="text-base text-red-300 font-bold">{dependencyTrace.blocked.length}</div><div className="text-[9px] text-slate-500">blocked</div></div>
+                    <div className="bg-slate-950/50 border border-slate-800 rounded p-2"><div className="text-base text-amber-300 font-bold">{dependencyTrace.missing.length}</div><div className="text-[9px] text-slate-500">missing</div></div>
+                  </div>
+                  <div className="grid grid-cols-4 gap-1">
+                    {ROADMAP_STAGES.map(stage => <button key={stage} onClick={() => setSearch(stage)} className="bg-slate-950/50 hover:bg-slate-800 border border-slate-800 rounded p-1 text-center"><div className="text-sm text-slate-100 font-bold">{roadmapCounts[stage] || 0}</div><div className="text-[9px] text-slate-500">{stage}</div></button>)}
                   </div>
                   <div className="space-y-1 max-h-20 overflow-y-auto tk-vscroll">
-                    {dependencyTrace.blocked.slice(0, 3).map(edge => <div key={edge.item.id + edge.dependency.id} className="text-[10px] text-slate-400"><span className="text-slate-200">{edge.item.path}</span> waits on <span className="text-cyan-300">{edge.dependency.path}</span></div>)}
-                    {dependencyTrace.blocked.length === 0 && dependencyTrace.missing.length === 0 && <div className="text-[10px] text-slate-500 italic">No active dependency blockers.</div>}
-                    {dependencyTrace.missing.slice(0, 2).map(edge => <div key={edge.item.id + edge.dependency} className="text-[10px] text-amber-300">{edge.item.path} missing link: {edge.dependency}</div>)}
-                  </div>
-                </div>
-                <div className="bg-slate-950/40 border border-slate-800 rounded p-2 min-h-[112px]">
-                  <div className="flex items-center gap-1 text-red-300 font-semibold mb-1"><ShieldAlert size={12} />Risk Register</div>
-                  <div className="space-y-1 max-h-28 overflow-y-auto tk-vscroll">
-                    {riskItems.filter(i => i.column !== 'Done').slice(0, 5).map(item => <button key={item.id} onClick={() => setViewingItem(item)} className="w-full text-left bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded px-2 py-1"><span className="text-[10px] text-red-300 font-semibold">{item.riskLevel}</span><span className="text-[10px] text-slate-500"> - {item.path}</span><div className="text-[10px] text-slate-300 truncate">{item.title}</div></button>)}
-                    {riskItems.filter(i => i.column !== 'Done').length === 0 && <div className="text-[10px] text-slate-500 italic">No open risks marked.</div>}
-                  </div>
-                </div>
-                <div className="bg-slate-950/40 border border-slate-800 rounded p-2 min-h-[112px]">
-                  <div className="flex items-center gap-1 text-purple-300 font-semibold mb-1"><Map size={12} />Roadmap</div>
-                  <div className="grid grid-cols-4 gap-1 mb-2">
-                    {ROADMAP_STAGES.map(stage => <div key={stage} className="bg-slate-900 rounded p-1 text-center"><div className="text-sm text-slate-100 font-bold">{roadmapCounts[stage] || 0}</div><div className="text-[9px] text-slate-500">{stage}</div></div>)}
-                  </div>
-                  <div className="space-y-1 max-h-16 overflow-y-auto tk-vscroll">
-                    {roadmapItems.slice(0, 4).map(item => <button key={item.id} onClick={() => setViewingItem(item)} className="block w-full text-left text-[10px] text-slate-400 hover:text-slate-200 truncate"><span className="text-purple-300">{item.roadmapStage}</span> - {item.path} {item.title}</button>)}
-                  </div>
-                </div>
-                <div className="bg-slate-950/40 border border-slate-800 rounded p-2 min-h-[112px]">
-                  <div className="flex items-center gap-1 text-amber-300 font-semibold mb-1"><Scale size={12} />Decisions & Domains</div>
-                  <div className="space-y-1 max-h-16 overflow-y-auto tk-vscroll mb-2">
-                    {decisionItems.slice(0, 4).map(item => <button key={item.id} onClick={() => setViewingItem(item)} className="block w-full text-left text-[10px] text-slate-400 hover:text-slate-200 truncate"><span className="text-amber-300">{item.decisionStatus}</span> - {item.path} {item.title}</button>)}
-                    {decisionItems.length === 0 && <div className="text-[10px] text-slate-500 italic">No decisions marked.</div>}
+                    {pendingDecisionItems.slice(0, 3).map(item => <button key={item.id} onClick={() => setViewingItem(item)} className="block w-full text-left text-[10px] text-slate-400 hover:text-slate-200 truncate"><span className="text-amber-300">{item.decisionStatus}</span> - {item.path} {item.title}</button>)}
+                    {dependencyTrace.missing.slice(0, 2).map(edge => <button key={edge.item.id + edge.dependency} onClick={() => setViewingItem(edge.item)} className="block w-full text-left text-[10px] text-amber-300 truncate">{edge.item.path} missing link: {edge.dependency}</button>)}
+                    {pendingDecisionItems.length === 0 && dependencyTrace.missing.length === 0 && <div className="text-[10px] text-slate-500 italic">No pending decisions or missing links.</div>}
                   </div>
                   <div className="flex flex-wrap gap-1">
-                    {Object.entries(domainCounts).slice(0, 7).map(([domain, count]) => <span key={domain} className={`text-[9px] px-1.5 py-0.5 rounded border ${DOMAIN_COLORS[domain] || 'bg-slate-800 text-slate-300 border-slate-600'}`}>{domain} {count}</span>)}
+                    {Object.entries(domainCounts).slice(0, 8).map(([domain, count]) => <span key={domain} className={'text-[9px] px-1.5 py-0.5 rounded border ' + (DOMAIN_COLORS[domain] || 'bg-slate-800 text-slate-300 border-slate-600')}>{domain} {count}</span>)}
                   </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-2 mb-1.5">
             <div className="relative flex-1 max-w-xs">
@@ -1236,6 +1260,44 @@ export default function App() {
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function DashboardMetric({ label, value, tone, icon }) {
+  const tones = {
+    amber: 'border-amber-800/50 bg-amber-950/20 text-amber-300',
+    red: 'border-red-800/50 bg-red-950/20 text-red-300',
+    blue: 'border-blue-800/50 bg-blue-950/20 text-blue-300',
+    purple: 'border-purple-800/50 bg-purple-950/20 text-purple-300',
+  };
+  return (
+    <div className={'border rounded p-2 min-h-[62px] ' + (tones[tone] || tones.blue)}>
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-[10px] text-slate-400">{label}</div>
+        <div>{icon}</div>
+      </div>
+      <div className="text-2xl font-bold text-slate-100 leading-tight">{value}</div>
+    </div>
+  );
+}
+
+function DashboardList({ title, items, emptyText, accent, onOpen, metaFor }) {
+  return (
+    <div className="bg-slate-950/40 border border-slate-800 rounded p-2 min-h-[128px]">
+      <div className={'text-[11px] font-semibold mb-1 ' + accent}>{title}</div>
+      <div className="space-y-1 max-h-24 overflow-y-auto tk-vscroll">
+        {items.slice(0, 5).map(item => (
+          <button key={item.id} onClick={() => onOpen(item)} className="w-full text-left bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded px-2 py-1">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] text-slate-500 font-mono">{item.path}</span>
+              <span className="text-[9px] text-slate-500 truncate">{metaFor(item)}</span>
+            </div>
+            <div className="text-[10px] text-slate-300 truncate">{item.title}</div>
+          </button>
+        ))}
+        {items.length === 0 && <div className="text-[10px] text-slate-500 italic">{emptyText}</div>}
       </div>
     </div>
   );

@@ -4,6 +4,18 @@ All notable changes to Agent Board will be documented in this file.
 
 The format is based on Keep a Changelog, and this project uses simple `0.x` versions while the tool is early.
 
+## [0.3.0] - 2026-06-27
+
+### Added
+
+- Focus Dashboard above the board for attention items, blockers, next work, risks, decisions, and roadmap load
+- Clickable dashboard lists that open the underlying work item from the summary layer
+
+### Changed
+
+- Reworked the Project Map into a secondary summary beside the dashboard so the first screen reads as action-first instead of metadata-first
+- Updated README feature docs around the first-screen UX
+
 ## [0.2.1] - 2026-06-27
 
 ### Added

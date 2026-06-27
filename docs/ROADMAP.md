@@ -12,6 +12,7 @@ Agent Board is intentionally small and local-first. The goal is to stay easy to 
 
 ## Likely Improvements
 
+- First-run template chooser for blank, demo, software, creator, research, and operations boards
 - Better import preview for schema warnings and replacement scope
 - Dependency graph filtering by domain, owner, and roadmap stage
 - Export presets for risk reviews, decision logs, and roadmap planning

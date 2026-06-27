@@ -12,6 +12,7 @@ It is designed for private project planning, not as a hosted multi-user service.
 
 ## Features
 
+- Focus Dashboard that immediately surfaces attention items, blockers, next work, risks, decisions, and roadmap load
 - Local kanban board with To Do, Doing, In Review, Blocked, and Done columns
 - Tiered sections for Core Release, Post Release, and Future Content
 - Configurable project title and visible labels for workstreams and cycles
@@ -113,6 +114,10 @@ Click `Backup` in the header to create a timestamped copy of `state.json` in `ba
 ## Import And Export
 
 Use `Export` to download a full JSON copy of the board. Exports include `app`, `schemaVersion`, and `version` metadata so future forks can identify compatible board files. Use `Import` to replace the current local board with a compatible JSON file. Agent Board still accepts older item-array exports, adds current metadata on save, and warns before importing unknown newer schemas. Create a backup first if the current board matters.
+
+## Focus Dashboard
+
+The first screen is designed to answer the questions a project owner usually has first: what needs attention, what is blocked, what is ready to pick up, what risks are open, what decisions are pending, and what is on the roadmap. Each dashboard list item opens the underlying card, so the summary stays connected to the board.
 
 ## Project Map
 
