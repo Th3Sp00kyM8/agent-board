@@ -21,7 +21,9 @@
     "build": "vite build",
     "preview": "vite preview",
     "reset:sample": "node scripts/reset-local-data.js",
-    "verify": "node scripts/verify.js"
+    "verify": "node scripts/verify.js",
+    "release:check": "npm run verify && npm run build && npm audit --audit-level=moderate",
+    "smoke:fresh": "node scripts/smoke-fresh-copy.js"
   },
   "dependencies": {
     "express": "^4.21.0",

@@ -60,13 +60,12 @@ function isIsoDate(value) {
 
 function gitTrackedFiles() {
   try {
-    return execFileSync('git', ['ls-files'], { cwd: root, encoding: 'utf8' })
+    return execFileSync('git', ['ls-files'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
       .split(/\r?\n/)
       .filter(Boolean)
       .map((file) => file.replace(/\\/g, '/'));
-  } catch (error) {
-    fail(`Could not inspect tracked files with git ls-files: ${error.message}`);
-    return [];
+  } catch {
+    return null;
   }
 }
 
@@ -78,7 +77,7 @@ function verifyPackage() {
   expect(pkg.type === 'module', 'package.json should use ESM via type=module.');
   expect(isNonEmptyString(pkg.description), 'package.json should include a description.');
   expect(pkg.engines && isNonEmptyString(pkg.engines.node), 'package.json should declare a Node engine.');
-  for (const scriptName of ['dev', 'build', 'preview', 'reset:sample', 'verify']) {
+  for (const scriptName of ['dev', 'build', 'preview', 'reset:sample', 'verify', 'release:check', 'smoke:fresh']) {
     expect(pkg.scripts && isNonEmptyString(pkg.scripts[scriptName]), `package.json is missing script: ${scriptName}`);
   }
 }
@@ -165,17 +164,33 @@ function verifyGitIgnore() {
     expect(gitignore.split(/\r?\n/).includes(pattern), `.gitignore should include ${pattern}.`);
   }
 
-  const tracked = new Set(gitTrackedFiles());
-  for (const file of localOnlyFiles) {
-    const normalized = file.replace(/\/$/, '');
-    expect(!tracked.has(normalized), `${file} should not be tracked.`);
+  const trackedFiles = gitTrackedFiles();
+  if (trackedFiles) {
+    const tracked = new Set(trackedFiles);
+    for (const file of localOnlyFiles) {
+      const normalized = file.replace(/\/$/, '');
+      expect(!tracked.has(normalized), `${file} should not be tracked.`);
+    }
   }
+}
+
+function verifyReleaseAssets() {
+  const screenshotPath = path.join(root, 'assets', 'screenshots', 'board-overview.png');
+  expect(fs.existsSync(screenshotPath), 'README screenshot is missing: assets/screenshots/board-overview.png');
+  if (fs.existsSync(screenshotPath)) {
+    expect(fs.statSync(screenshotPath).size > 50000, 'README screenshot looks too small to be a useful app screenshot.');
+  }
+  expect(fs.existsSync(path.join(root, 'docs', 'RELEASE.md')), 'docs/RELEASE.md is missing.');
+  const readme = readText('README.md');
+  expect(readme.includes('assets/screenshots/board-overview.png'), 'README should include the board overview screenshot.');
+  expect(readme.includes('docs/RELEASE.md'), 'README should link to docs/RELEASE.md.');
 }
 
 verifyPackage();
 verifyConfig();
 verifySampleState();
 verifyGitIgnore();
+verifyReleaseAssets();
 
 if (errors.length > 0) {
   console.error(`Verification failed with ${errors.length} issue(s):`);

@@ -4,6 +4,8 @@ Agent Board is a local-first kanban board for coordinating human and AI project 
 
 It is designed for private project planning, not as a hosted multi-user service.
 
+![Agent Board overview](assets/screenshots/board-overview.png)
+
 ## Features
 
 - Local kanban board with To Do, Doing, In Review, Blocked, and Done columns
@@ -115,13 +117,15 @@ Agent Board is an unauthenticated localhost tool. Do not expose ports `5173` or 
 - [Contributing](CONTRIBUTING.md)
 - [Security Policy](SECURITY.md)
 - [Changelog](CHANGELOG.md)
+- [Release Checklist](docs/RELEASE.md)
 
 ## Development
 
 ```powershell
 npm run verify
 npm run build
-npm run preview
+npm run release:check
+npm run smoke:fresh
 ```
 
 The app is intentionally simple: React + Vite frontend, Express backend, JSON files on disk.

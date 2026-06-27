@@ -19,6 +19,8 @@ The format is based on Keep a Changelog, and this project uses simple `0.x` vers
 - `npm run verify` for sample/config validation and local-only file checks
 - GitHub Actions CI for verify, build, and dependency audit
 - In-app Settings modal for editing local project title and labels
+- README screenshot and release checklist
+- Fresh-copy smoke test for release validation
 
 ### Security
 
