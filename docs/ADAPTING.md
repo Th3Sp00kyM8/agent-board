@@ -11,7 +11,7 @@ npm install
 npm run dev
 ```
 
-Then edit `config.json`. This file is ignored by Git, so it is safe for your local project name and labels.
+Then click `Settings` in the app header, or edit `config.json` directly. This file is ignored by Git, so it is safe for your local project name and labels.
 
 ```json
 {

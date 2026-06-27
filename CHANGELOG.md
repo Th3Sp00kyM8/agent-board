@@ -18,6 +18,7 @@ The format is based on Keep a Changelog, and this project uses simple `0.x` vers
 - Open-source support docs, issue templates, and contribution guidance
 - `npm run verify` for sample/config validation and local-only file checks
 - GitHub Actions CI for verify, build, and dependency audit
+- In-app Settings modal for editing local project title and labels
 
 ### Security
 

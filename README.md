@@ -63,7 +63,9 @@ This separation keeps the app reusable while keeping real project data out of Gi
 
 ## Customizing For Your Project
 
-Start the app once, then edit `config.json`:
+Click `Settings` in the header to edit the local project title, work item label, and cycle label. Settings are saved to ignored local `config.json` so forks can keep reusable defaults in Git while each user keeps private local wording on their machine.
+
+You can also edit `config.json` directly after first run:
 
 ```json
 {
@@ -75,7 +77,7 @@ Start the app once, then edit `config.json`:
 }
 ```
 
-Refresh the browser after editing. `projectName` changes the app title. `labels.workstream` and `labels.cycle` update visible UI labels and the Sync to Chat summary.
+Refresh the browser after direct file edits. `projectName` changes the app title. `labels.workstream` and `labels.cycle` update visible UI labels and the Sync to Chat summary.
 
 For deeper changes, edit `src/App.jsx` constants such as columns, tiers, and source legend. Those are intentionally small and near the top of the file.
 

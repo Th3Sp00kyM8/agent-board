@@ -23,6 +23,10 @@ const CONFIG_FILE = path.join(__dirname, 'config.json');
 const SAMPLE_STATE_FILE = path.join(__dirname, 'sample.state.json');
 const SAMPLE_CONFIG_FILE = path.join(__dirname, 'config.example.json');
 const BACKUP_DIR = path.join(__dirname, 'backups');
+const DEFAULT_CONFIG = {
+  projectName: 'Agent Board',
+  labels: { workstream: 'Workstream', cycle: 'Sprint' },
+};
 
 function writeJsonAtomic(filePath, data) {
   const tmpPath = `${filePath}.tmp`;
@@ -43,10 +47,7 @@ function copyOrCreate(targetPath, samplePath, fallbackData, label) {
 
 if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true });
 
-copyOrCreate(CONFIG_FILE, SAMPLE_CONFIG_FILE, {
-  projectName: 'Agent Board',
-  labels: { workstream: 'Workstream', cycle: 'Sprint' }
-}, 'config.json');
+copyOrCreate(CONFIG_FILE, SAMPLE_CONFIG_FILE, DEFAULT_CONFIG, 'config.json');
 
 copyOrCreate(STATE_FILE, SAMPLE_STATE_FILE, {
   items: [],
@@ -90,17 +91,39 @@ app.get('/api/config', (req, res) => {
   }
 });
 
+function normalizeConfig(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    throw new Error('Body must be a configuration object');
+  }
+  const projectName = typeof body.projectName === 'string' ? body.projectName.trim() : '';
+  const labels = body.labels && typeof body.labels === 'object' && !Array.isArray(body.labels) ? body.labels : {};
+  const workstream = typeof labels.workstream === 'string' ? labels.workstream.trim() : '';
+  const cycle = typeof labels.cycle === 'string' ? labels.cycle.trim() : '';
+  if (!projectName) throw new Error('projectName is required');
+  if (!workstream) throw new Error('labels.workstream is required');
+  if (!cycle) throw new Error('labels.cycle is required');
+  return {
+    ...DEFAULT_CONFIG,
+    ...body,
+    projectName,
+    labels: {
+      ...DEFAULT_CONFIG.labels,
+      ...labels,
+      workstream,
+      cycle,
+    },
+  };
+}
+
 app.put('/api/config', (req, res) => {
   try {
-    const body = req.body;
-    if (!body || typeof body !== 'object' || Array.isArray(body)) {
-      return res.status(400).json({ error: 'Body must be a configuration object' });
-    }
-    writeJsonAtomic(CONFIG_FILE, body);
-    res.json({ ok: true, savedAt: new Date().toISOString() });
+    const config = normalizeConfig(req.body);
+    writeJsonAtomic(CONFIG_FILE, config);
+    res.json({ ok: true, savedAt: new Date().toISOString(), config });
   } catch (err) {
     console.error('[server] PUT /api/config failed:', err);
-    res.status(500).json({ error: err.message });
+    const status = err.message.includes('required') || err.message.includes('configuration object') ? 400 : 500;
+    res.status(status).json({ error: err.message });
   }
 });
 

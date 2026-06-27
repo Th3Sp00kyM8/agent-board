@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Plus, X, Edit2, Trash2, Copy, Download, Upload, Search, AlertTriangle, RotateCcw, Lock, ChevronDown, ChevronRight, ChevronLeft, Check, Calendar, Tag, FileText, ArrowRight, Palette, MessageSquare, Info, Target, Zap, AlertCircle, Save, WifiOff, Layers } from 'lucide-react';
+import { Plus, X, Edit2, Trash2, Copy, Download, Upload, Search, AlertTriangle, RotateCcw, Lock, ChevronDown, ChevronRight, ChevronLeft, Check, Calendar, Tag, FileText, ArrowRight, Palette, MessageSquare, Info, Target, Zap, AlertCircle, Save, WifiOff, Layers, Settings } from 'lucide-react';
 
 const COLUMNS = ['To Do', 'Doing', 'In Review', 'Blocked', 'Done'];
 
@@ -151,6 +151,9 @@ export default function App() {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showImportConfirm, setShowImportConfirm] = useState(null);
   const [showExport, setShowExport] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [configSaveStatus, setConfigSaveStatus] = useState('idle');
+  const [configError, setConfigError] = useState('');
   const [copiedFlag, setCopiedFlag] = useState(false);
   const [syncFlag, setSyncFlag] = useState(false);
   const [dragId, setDragId] = useState(null);
@@ -236,6 +239,7 @@ export default function App() {
         else if (editingItem) setEditingItem(null);
         else if (showAdd) setShowAdd(false);
         else if (showExport) setShowExport(false);
+        else if (showSettings) setShowSettings(false);
         else if (showResetConfirm) setShowResetConfirm(false);
         else if (showImportConfirm) setShowImportConfirm(null);
         else if (showBulkMove) setShowBulkMove(false);
@@ -246,7 +250,7 @@ export default function App() {
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [viewingItem, editingItem, showAdd, showExport, showResetConfirm, showImportConfirm, showBulkMove, showBulkTier, showBulkRound, showAbout]);
+  }, [viewingItem, editingItem, showAdd, showExport, showSettings, showResetConfirm, showImportConfirm, showBulkMove, showBulkTier, showBulkRound, showAbout]);
 
   function updateScrollState() {
     const c = scrollContainerRef.current;
@@ -436,6 +440,50 @@ export default function App() {
     }
   }
 
+  function openSettings() {
+    setConfigSaveStatus('idle');
+    setConfigError('');
+    setShowSettings(true);
+  }
+
+  async function saveAppConfig(nextConfig) {
+    const normalized = {
+      ...DEFAULT_APP_CONFIG,
+      ...nextConfig,
+      projectName: nextConfig.projectName.trim(),
+      labels: {
+        ...DEFAULT_APP_CONFIG.labels,
+        ...(nextConfig.labels || {}),
+        workstream: nextConfig.labels.workstream.trim(),
+        cycle: nextConfig.labels.cycle.trim(),
+      },
+    };
+    setConfigSaveStatus('saving');
+    setConfigError('');
+    try {
+      const res = await fetch('/api/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(normalized),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      const savedConfig = data.config || normalized;
+      setAppConfig({ ...DEFAULT_APP_CONFIG, ...savedConfig, labels: { ...DEFAULT_APP_CONFIG.labels, ...(savedConfig.labels || {}) } });
+      setConfigSaveStatus('saved');
+      setServerStatus('ok');
+      setTimeout(() => {
+        setShowSettings(false);
+        setConfigSaveStatus('idle');
+      }, 500);
+    } catch (err) {
+      setConfigSaveStatus('error');
+      setConfigError(err.message);
+      setServerStatus('error');
+      setServerError(err.message);
+    }
+  }
+
   function exportJSON() {
     const payload = { items, sprintBoard, exportedAt: nowIso(), version: 'local-v2-tiers' };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
@@ -613,6 +661,7 @@ export default function App() {
                 {syncFlag ? <Check size={12} /> : <MessageSquare size={12} />}
                 {syncFlag ? 'Copied' : 'Sync to Chat'}
               </button>
+              <button onClick={openSettings} className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded text-xs flex items-center gap-1" title="Edit project settings"><Settings size={12} />Settings</button>
               <button onClick={createBackup} className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded text-xs flex items-center gap-1" title="Create timestamped backup"><Save size={12} />Backup</button>
               <button onClick={() => setShowExport(true)} className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded text-xs flex items-center gap-1"><Download size={12} />Export</button>
               <button onClick={() => fileInputRef.current?.click()} className="px-2.5 py-1 bg-amber-800 hover:bg-amber-700 rounded text-xs flex items-center gap-1" title="Import JSON"><Upload size={12} />Import</button>
@@ -883,6 +932,7 @@ export default function App() {
 
         {viewingItem && <TaskDetailModal item={viewingItem} labels={labels} onClose={() => setViewingItem(null)} onEdit={() => { setEditingItem(viewingItem); setViewingItem(null); }} onDelete={(id) => { if (confirm(`Delete ${workstreamLabel.toLowerCase()} ${viewingItem.path}?`)) deleteItem(id); }} onMove={(id, col) => moveItem(id, col)} />}
         {(editingItem || showAdd) && <ItemEditModal item={editingItem} labels={labels} existingPaths={existingPaths} onSave={saveItem} onClose={() => { setEditingItem(null); setShowAdd(false); }} />}
+        {showSettings && <SettingsModal config={appConfig} status={configSaveStatus} error={configError} onSave={saveAppConfig} onClose={() => setShowSettings(false)} />}
 
         {showAbout && (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50" onClick={() => setShowAbout(false)}>
@@ -990,6 +1040,63 @@ export default function App() {
   );
 }
 
+function SettingsModal({ config, status, error, onSave, onClose }) {
+  const [form, setForm] = useState({
+    projectName: config.projectName || DEFAULT_APP_CONFIG.projectName,
+    workstream: config.labels?.workstream || DEFAULT_APP_CONFIG.labels.workstream,
+    cycle: config.labels?.cycle || DEFAULT_APP_CONFIG.labels.cycle,
+  });
+  const canSave = form.projectName.trim() && form.workstream.trim() && form.cycle.trim() && status !== 'saving';
+  function submit() {
+    if (!canSave) return;
+    onSave({
+      ...config,
+      projectName: form.projectName,
+      labels: {
+        ...(config.labels || {}),
+        workstream: form.workstream,
+        cycle: form.cycle,
+      },
+    });
+  }
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50" onClick={onClose}>
+      <div className="bg-slate-900 border border-slate-700 rounded-lg max-w-lg w-full p-4" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-base font-bold flex items-center gap-2"><Settings size={16} className="text-blue-400" />Settings</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-200"><X size={18} /></button>
+        </div>
+        <div className="space-y-3 text-xs">
+          <div>
+            <label className="block text-slate-500 mb-1">Project title</label>
+            <input type="text" value={form.projectName} onChange={e => setForm({ ...form, projectName: e.target.value })} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5" autoFocus />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-slate-500 mb-1">Work item label</label>
+              <input type="text" value={form.workstream} onChange={e => setForm({ ...form, workstream: e.target.value })} placeholder="Workstream" className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5" />
+            </div>
+            <div>
+              <label className="block text-slate-500 mb-1">Cycle label</label>
+              <input type="text" value={form.cycle} onChange={e => setForm({ ...form, cycle: e.target.value })} placeholder="Sprint" className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5" />
+            </div>
+          </div>
+          <div className="bg-slate-950/60 border border-slate-800 rounded p-2 text-[10px] text-slate-400 space-y-1">
+            <div><span className="text-slate-500">Title:</span> {(form.projectName || DEFAULT_APP_CONFIG.projectName).toUpperCase()}</div>
+            <div><span className="text-slate-500">Example:</span> {form.workstream || 'Workstream'} A in current {(form.cycle || 'Sprint').toLowerCase()}</div>
+          </div>
+          {error && <div className="text-[11px] text-red-300 bg-red-950/40 border border-red-900/50 rounded p-2">{error}</div>}
+        </div>
+        <div className="mt-4 flex items-center justify-end gap-2">
+          {status === 'saved' && <span className="text-[11px] text-green-400 mr-auto">Saved</span>}
+          {status === 'saving' && <span className="text-[11px] text-blue-400 mr-auto">Saving...</span>}
+          <button onClick={onClose} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded text-xs">Cancel</button>
+          <button onClick={submit} disabled={!canSave} className={`px-3 py-1.5 rounded text-xs flex items-center gap-1.5 ${canSave ? 'bg-blue-600 hover:bg-blue-500' : 'bg-slate-800 text-slate-500 cursor-not-allowed'}`}><Save size={12} />Save settings</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 function TaskDetailModal({ item, labels = DEFAULT_APP_CONFIG.labels, onClose, onEdit, onDelete, onMove }) {
   const workstreamLabel = labels.workstream || 'Workstream';
   const cycleLabel = labels.cycle || 'Sprint';
