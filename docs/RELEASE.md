@@ -29,11 +29,12 @@ npm run smoke:fresh
 
    ```powershell
    git tag v0.1.0
-   git push origin main --tags
+   git push origin HEAD --tags
    ```
 
-3. Draft a GitHub release from `CHANGELOG.md`.
-4. Include the screenshot from `assets/screenshots/board-overview.png` in the release notes if GitHub preview needs visual context.
+3. Confirm GitHub Actions passes on the pushed branch.
+4. Draft a GitHub release from `CHANGELOG.md`.
+5. Include the screenshot from `assets/screenshots/board-overview.png` in the release notes if GitHub preview needs visual context.
 
 ## Do Not Release
 

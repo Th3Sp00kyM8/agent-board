@@ -21,6 +21,7 @@ The format is based on Keep a Changelog, and this project uses simple `0.x` vers
 - In-app Settings modal for editing local project title and labels
 - README screenshot and release checklist
 - Fresh-copy smoke test for release validation
+- Repository editor/line-ending defaults and publishing guide
 
 ### Security
 

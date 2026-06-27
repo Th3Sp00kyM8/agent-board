@@ -118,6 +118,7 @@ Agent Board is an unauthenticated localhost tool. Do not expose ports `5173` or 
 - [Security Policy](SECURITY.md)
 - [Changelog](CHANGELOG.md)
 - [Release Checklist](docs/RELEASE.md)
+- [Publishing Guide](docs/PUBLISHING.md)
 
 ## Development
 

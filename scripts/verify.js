@@ -181,9 +181,13 @@ function verifyReleaseAssets() {
     expect(fs.statSync(screenshotPath).size > 50000, 'README screenshot looks too small to be a useful app screenshot.');
   }
   expect(fs.existsSync(path.join(root, 'docs', 'RELEASE.md')), 'docs/RELEASE.md is missing.');
+  expect(fs.existsSync(path.join(root, 'docs', 'PUBLISHING.md')), 'docs/PUBLISHING.md is missing.');
+  expect(fs.existsSync(path.join(root, '.gitattributes')), '.gitattributes is missing.');
+  expect(fs.existsSync(path.join(root, '.editorconfig')), '.editorconfig is missing.');
   const readme = readText('README.md');
   expect(readme.includes('assets/screenshots/board-overview.png'), 'README should include the board overview screenshot.');
   expect(readme.includes('docs/RELEASE.md'), 'README should link to docs/RELEASE.md.');
+  expect(readme.includes('docs/PUBLISHING.md'), 'README should link to docs/PUBLISHING.md.');
 }
 
 verifyPackage();
