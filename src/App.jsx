@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Plus, X, Edit2, Trash2, Copy, Download, Upload, Search, AlertTriangle, RotateCcw, Lock, ChevronDown, ChevronRight, ChevronLeft, Check, Calendar, Tag, FileText, ArrowRight, Palette, MessageSquare, Info, Target, Zap, AlertCircle, Save, WifiOff, Layers, Settings } from 'lucide-react';
+import { Plus, X, Edit2, Trash2, Copy, Download, Upload, Search, AlertTriangle, RotateCcw, Lock, ChevronDown, ChevronRight, ChevronLeft, Check, Calendar, Tag, FileText, ArrowRight, Palette, MessageSquare, Info, Target, Zap, AlertCircle, Save, WifiOff, Layers, Settings, GitBranch, ShieldAlert, Map, Scale } from 'lucide-react';
 
 const COLUMNS = ['To Do', 'Doing', 'In Review', 'Blocked', 'Done'];
 
@@ -17,6 +17,29 @@ const SEVERITY_COLORS = {
 };
 
 const SIZE_LABELS = { 'S': '~60 min', 'M': '~120 min', 'L': '~180 min', 'XL': '~240+ min' };
+
+const PROJECT_DOMAINS = [
+  'Delivery', 'Dependency', 'Risk', 'Roadmap', 'Decision', 'Research', 'Design', 'Engineering', 'QA', 'Operations', 'Documentation', 'Stakeholder',
+];
+
+const ROADMAP_STAGES = ['Now', 'Next', 'Later', 'Backlog'];
+const RISK_LEVELS = ['None', 'Low', 'Medium', 'High', 'Critical'];
+const DECISION_STATES = ['None', 'Proposed', 'Accepted', 'Rejected', 'Deferred'];
+
+const DOMAIN_COLORS = {
+  Delivery: 'bg-blue-900/40 text-blue-300 border-blue-700/40',
+  Dependency: 'bg-cyan-900/40 text-cyan-300 border-cyan-700/40',
+  Risk: 'bg-red-900/40 text-red-300 border-red-700/40',
+  Roadmap: 'bg-purple-900/40 text-purple-300 border-purple-700/40',
+  Decision: 'bg-amber-900/40 text-amber-300 border-amber-700/40',
+  Research: 'bg-teal-900/40 text-teal-300 border-teal-700/40',
+  Design: 'bg-pink-900/40 text-pink-300 border-pink-700/40',
+  Engineering: 'bg-indigo-900/40 text-indigo-300 border-indigo-700/40',
+  QA: 'bg-emerald-900/40 text-emerald-300 border-emerald-700/40',
+  Operations: 'bg-slate-800 text-slate-300 border-slate-600',
+  Documentation: 'bg-orange-900/40 text-orange-300 border-orange-700/40',
+  Stakeholder: 'bg-lime-900/40 text-lime-300 border-lime-700/40',
+};
 
 const COLUMN_COLORS = {
   'To Do': 'border-slate-600',
@@ -77,10 +100,64 @@ function nowIso() { return new Date().toISOString(); }
 function uid() { return Math.random().toString(36).slice(2, 11); }
 function formatDate(iso) { if (!iso) return ''; return new Date(iso).toLocaleString(); }
 
-// Migrate items missing releaseTier to default 'core_release'
-function ensureReleaseTier(item) {
-  if (!item.releaseTier) return { ...item, releaseTier: 'core_release' };
-  return item;
+function normalizeDependencyList(value) {
+  if (Array.isArray(value)) return value.map(v => String(v || '').trim()).filter(Boolean);
+  if (typeof value === 'string') return value.split(/[\n,]+/).map(v => v.trim()).filter(Boolean);
+  return [];
+}
+
+function ensureItemShape(item) {
+  const domain = PROJECT_DOMAINS.includes(item.domain) ? item.domain : 'Delivery';
+  const riskLevel = RISK_LEVELS.includes(item.riskLevel) ? item.riskLevel : 'None';
+  const roadmapStage = ROADMAP_STAGES.includes(item.roadmapStage) ? item.roadmapStage : 'Backlog';
+  const decisionStatus = DECISION_STATES.includes(item.decisionStatus) ? item.decisionStatus : 'None';
+  return {
+    ...item,
+    releaseTier: item.releaseTier || 'core_release',
+    domain,
+    dependencies: normalizeDependencyList(item.dependencies),
+    riskLevel,
+    roadmapStage,
+    decisionStatus,
+    owner: typeof item.owner === 'string' ? item.owner : '',
+  };
+}
+
+function findDependencyTarget(items, key) {
+  const needle = String(key || '').trim().toLowerCase();
+  if (!needle) return null;
+  return items.find(item =>
+    String(item.id || '').toLowerCase() === needle ||
+    String(item.path || '').toLowerCase() === needle ||
+    String(item.title || '').toLowerCase() === needle
+  ) || null;
+}
+
+function buildDependencyTrace(items) {
+  const edges = [];
+  const blocked = [];
+  const missing = [];
+  for (const item of items) {
+    for (const dep of normalizeDependencyList(item.dependencies)) {
+      const target = findDependencyTarget(items, dep);
+      if (!target) {
+        missing.push({ item, dependency: dep });
+        continue;
+      }
+      const done = target.column === 'Done';
+      edges.push({ from: target, to: item, done });
+      if (!done && item.column !== 'Done') blocked.push({ item, dependency: target });
+    }
+  }
+  return { edges, blocked, missing };
+}
+
+function countBy(items, field) {
+  return items.reduce((out, item) => {
+    const key = item[field] || 'Unassigned';
+    out[key] = (out[key] || 0) + 1;
+    return out;
+  }, {});
 }
 
 function suggestNextPath(existingPaths) {
@@ -168,6 +245,7 @@ export default function App() {
   const [canScrollRight, setCanScrollRight] = useState(false);
   const [legendCollapsed, setLegendCollapsed] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
+  const [insightsExpanded, setInsightsExpanded] = useState(true);
   // Set of "column:tier" strings indicating collapsed sections
   const [collapsedSections, setCollapsedSections] = useState(() => new Set());
 
@@ -190,7 +268,7 @@ export default function App() {
         const data = await res.json();
         if (data.items && Array.isArray(data.items)) {
           // Backward compat: ensure all items have releaseTier
-          setItems(data.items.map(ensureReleaseTier));
+          setItems(data.items.map(ensureItemShape));
         }
         if (data.sprintBoard) setSprintBoard({ ...DEFAULT_SPRINT_BOARD, ...data.sprintBoard });
         setServerStatus('ok');
@@ -319,13 +397,20 @@ export default function App() {
     if (filterSeverity !== 'All' && item.severity !== filterSeverity) return false;
     if (search) {
       const s = search.toLowerCase();
-      if (!item.title.toLowerCase().includes(s) && !item.description.toLowerCase().includes(s) && !item.notes.toLowerCase().includes(s) && !item.path.toLowerCase().includes(s)) return false;
+      const haystack = [item.title, item.description, item.notes, item.path, item.source, item.domain, item.owner, item.roadmapStage, item.decisionStatus, ...(item.dependencies || [])].join(' ').toLowerCase();
+      if (!haystack.includes(s)) return false;
     }
     return true;
   });
 
   const sources = ['All', ...Array.from(new Set(items.map(i => i.source.split(' ')[0]))).sort()];
   const agentStatus = deriveAgentStatus(items);
+  const dependencyTrace = buildDependencyTrace(items);
+  const domainCounts = countBy(items, 'domain');
+  const roadmapCounts = countBy(items, 'roadmapStage');
+  const riskItems = items.filter(i => i.riskLevel && i.riskLevel !== 'None').sort((a, b) => RISK_LEVELS.indexOf(b.riskLevel) - RISK_LEVELS.indexOf(a.riskLevel));
+  const decisionItems = items.filter(i => i.decisionStatus && i.decisionStatus !== 'None');
+  const roadmapItems = items.filter(i => (i.domain === 'Roadmap' || ROADMAP_STAGES.includes(i.roadmapStage)) && i.column !== 'Done');
   const columnCounts = {};
   COLUMNS.forEach(c => {
     columnCounts[c] = {
@@ -518,7 +603,7 @@ export default function App() {
           return;
         }
         // Migrate imported items to ensure releaseTier
-        importedItems = importedItems.map(ensureReleaseTier);
+        importedItems = importedItems.map(ensureItemShape);
         setShowImportConfirm({ items: importedItems, sprintBoard: importedSprint });
       } catch (err) {
         alert(`Failed to parse JSON: ${err.message}`);
@@ -549,6 +634,10 @@ export default function App() {
     md += `- Last ${cycleNoun} (${sprintBoard.lastRoundLabel}): ${sprintBoard.lastRoundSummary}\n`;
     md += `- Current ${cycleNoun} (${sprintBoard.currentRound}): ${sprintBoard.currentRoundGoal}\n`;
     md += `- Next ${cycleNoun} (${sprintBoard.nextRound}): ${sprintBoard.nextRoundGoal}\n\n`;
+    md += `**Project map:**\n`;
+    md += `- Dependency edges: ${dependencyTrace.edges.length}; blocked by unfinished dependencies: ${dependencyTrace.blocked.length}; missing links: ${dependencyTrace.missing.length}\n`;
+    md += `- Open risks: ${riskItems.filter(i => i.column !== 'Done').length}; decisions: ${decisionItems.length}; roadmap items: ${roadmapItems.length}\n`;
+    md += `- Domains: ${Object.entries(domainCounts).map(([key, count]) => `${key} ${count}`).join(', ')}\n\n`;
     md += `**Agent status (auto-derived from Doing column):**\n`;
     md += `- Developer: ${agentStatus.developer ? `${workstreamLabel} ${agentStatus.developer.path} (${agentStatus.developer.actualRound || '-'}) - ${agentStatus.developer.title}` : 'idle'}\n`;
     md += `- AI Agent: ${agentStatus.aiAgent ? `${workstreamLabel} ${agentStatus.aiAgent.path} (${agentStatus.aiAgent.actualRound || '-'}) - ${agentStatus.aiAgent.title}` : 'idle'}\n`;
@@ -565,6 +654,28 @@ export default function App() {
     else groups['In Review'].forEach(i => {
       md += `- ${workstreamLabel} ${i.path} - ${i.title}${i.actualRound ? ` (${i.actualRound})` : ''}\n`;
       if (i.notes) md += `  - ${i.notes}\n`;
+    });
+    const activeDependencyBlocks = dependencyTrace.blocked.filter(edge => edge.item.column !== 'Done').slice(0, 8);
+    md += `\n**DEPENDENCY TRACE (${dependencyTrace.edges.length} edges):**\n`;
+    if (activeDependencyBlocks.length === 0 && dependencyTrace.missing.length === 0) md += `_(no active dependency blockers)_\n`;
+    activeDependencyBlocks.forEach(edge => {
+      md += `- ${workstreamLabel} ${edge.item.path} waits on ${workstreamLabel} ${edge.dependency.path} - ${edge.dependency.title} [${edge.dependency.column}]\n`;
+    });
+    dependencyTrace.missing.slice(0, 5).forEach(edge => {
+      md += `- ${workstreamLabel} ${edge.item.path} has unresolved dependency key: ${edge.dependency}\n`;
+    });
+    md += `\n**RISKS (${riskItems.filter(i => i.column !== 'Done').length} open):**\n`;
+    const openRisks = riskItems.filter(i => i.column !== 'Done').slice(0, 8);
+    if (openRisks.length === 0) md += `_(none)_\n`;
+    openRisks.forEach(i => { md += `- ${workstreamLabel} ${i.path} - ${i.title} [${i.riskLevel}]${i.owner ? ` owner: ${i.owner}` : ''}\n`; });
+    md += `\n**DECISIONS (${decisionItems.length}):**\n`;
+    if (decisionItems.length === 0) md += `_(none)_\n`;
+    decisionItems.slice(0, 8).forEach(i => { md += `- ${workstreamLabel} ${i.path} - ${i.title} [${i.decisionStatus}]\n`; });
+    md += `\n**ROADMAP (${roadmapItems.length} open):**\n`;
+    if (roadmapItems.length === 0) md += `_(none)_\n`;
+    ROADMAP_STAGES.forEach(stage => {
+      const stageItems = roadmapItems.filter(i => i.roadmapStage === stage).slice(0, 4);
+      if (stageItems.length) md += `- ${stage}: ${stageItems.map(i => `${workstreamLabel} ${i.path}`).join(', ')}\n`;
     });
     md += `\n**BLOCKED (${groups['Blocked'].length}):**\n`;
     if (groups['Blocked'].length === 0) md += `_(none)_\n`;
@@ -724,6 +835,61 @@ export default function App() {
             )}
           </div>
 
+          <div className="bg-slate-900/50 border border-slate-800 rounded mb-2">
+            <button onClick={() => setInsightsExpanded(!insightsExpanded)} className="w-full px-3 py-1.5 flex items-center justify-between text-xs hover:bg-slate-800/50">
+              <div className="flex items-center gap-2 text-slate-300 font-semibold"><GitBranch size={12} className="text-cyan-400" />PROJECT MAP</div>
+              <div className="flex items-center gap-2 text-[10px] text-slate-500">
+                <span>{dependencyTrace.edges.length} dependencies</span>
+                <span>{riskItems.filter(i => i.column !== 'Done').length} open risks</span>
+                <span>{decisionItems.length} decisions</span>
+                <span>{roadmapItems.length} roadmap</span>
+                {insightsExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+              </div>
+            </button>
+            {insightsExpanded && (
+              <div className="px-3 pb-3 pt-1 border-t border-slate-800 grid grid-cols-1 lg:grid-cols-4 gap-2 text-xs">
+                <div className="bg-slate-950/40 border border-slate-800 rounded p-2 min-h-[112px]">
+                  <div className="flex items-center gap-1 text-cyan-300 font-semibold mb-1"><GitBranch size={12} />Dependency Trace</div>
+                  <div className="grid grid-cols-3 gap-1 text-center mb-2">
+                    <div className="bg-slate-900 rounded p-1"><div className="text-sm text-slate-100 font-bold">{dependencyTrace.edges.length}</div><div className="text-[9px] text-slate-500">edges</div></div>
+                    <div className="bg-slate-900 rounded p-1"><div className="text-sm text-red-300 font-bold">{dependencyTrace.blocked.length}</div><div className="text-[9px] text-slate-500">blocked</div></div>
+                    <div className="bg-slate-900 rounded p-1"><div className="text-sm text-amber-300 font-bold">{dependencyTrace.missing.length}</div><div className="text-[9px] text-slate-500">missing</div></div>
+                  </div>
+                  <div className="space-y-1 max-h-20 overflow-y-auto tk-vscroll">
+                    {dependencyTrace.blocked.slice(0, 3).map(edge => <div key={edge.item.id + edge.dependency.id} className="text-[10px] text-slate-400"><span className="text-slate-200">{edge.item.path}</span> waits on <span className="text-cyan-300">{edge.dependency.path}</span></div>)}
+                    {dependencyTrace.blocked.length === 0 && dependencyTrace.missing.length === 0 && <div className="text-[10px] text-slate-500 italic">No active dependency blockers.</div>}
+                    {dependencyTrace.missing.slice(0, 2).map(edge => <div key={edge.item.id + edge.dependency} className="text-[10px] text-amber-300">{edge.item.path} missing link: {edge.dependency}</div>)}
+                  </div>
+                </div>
+                <div className="bg-slate-950/40 border border-slate-800 rounded p-2 min-h-[112px]">
+                  <div className="flex items-center gap-1 text-red-300 font-semibold mb-1"><ShieldAlert size={12} />Risk Register</div>
+                  <div className="space-y-1 max-h-28 overflow-y-auto tk-vscroll">
+                    {riskItems.filter(i => i.column !== 'Done').slice(0, 5).map(item => <button key={item.id} onClick={() => setViewingItem(item)} className="w-full text-left bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded px-2 py-1"><span className="text-[10px] text-red-300 font-semibold">{item.riskLevel}</span><span className="text-[10px] text-slate-500"> - {item.path}</span><div className="text-[10px] text-slate-300 truncate">{item.title}</div></button>)}
+                    {riskItems.filter(i => i.column !== 'Done').length === 0 && <div className="text-[10px] text-slate-500 italic">No open risks marked.</div>}
+                  </div>
+                </div>
+                <div className="bg-slate-950/40 border border-slate-800 rounded p-2 min-h-[112px]">
+                  <div className="flex items-center gap-1 text-purple-300 font-semibold mb-1"><Map size={12} />Roadmap</div>
+                  <div className="grid grid-cols-4 gap-1 mb-2">
+                    {ROADMAP_STAGES.map(stage => <div key={stage} className="bg-slate-900 rounded p-1 text-center"><div className="text-sm text-slate-100 font-bold">{roadmapCounts[stage] || 0}</div><div className="text-[9px] text-slate-500">{stage}</div></div>)}
+                  </div>
+                  <div className="space-y-1 max-h-16 overflow-y-auto tk-vscroll">
+                    {roadmapItems.slice(0, 4).map(item => <button key={item.id} onClick={() => setViewingItem(item)} className="block w-full text-left text-[10px] text-slate-400 hover:text-slate-200 truncate"><span className="text-purple-300">{item.roadmapStage}</span> - {item.path} {item.title}</button>)}
+                  </div>
+                </div>
+                <div className="bg-slate-950/40 border border-slate-800 rounded p-2 min-h-[112px]">
+                  <div className="flex items-center gap-1 text-amber-300 font-semibold mb-1"><Scale size={12} />Decisions & Domains</div>
+                  <div className="space-y-1 max-h-16 overflow-y-auto tk-vscroll mb-2">
+                    {decisionItems.slice(0, 4).map(item => <button key={item.id} onClick={() => setViewingItem(item)} className="block w-full text-left text-[10px] text-slate-400 hover:text-slate-200 truncate"><span className="text-amber-300">{item.decisionStatus}</span> - {item.path} {item.title}</button>)}
+                    {decisionItems.length === 0 && <div className="text-[10px] text-slate-500 italic">No decisions marked.</div>}
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {Object.entries(domainCounts).slice(0, 7).map(([domain, count]) => <span key={domain} className={`text-[9px] px-1.5 py-0.5 rounded border ${DOMAIN_COLORS[domain] || 'bg-slate-800 text-slate-300 border-slate-600'}`}>{domain} {count}</span>)}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
           <div className="flex items-center gap-2 mb-1.5">
             <div className="relative flex-1 max-w-xs">
               <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-500" />
@@ -857,6 +1023,9 @@ export default function App() {
                                           <span className="text-[9px] font-mono font-bold text-blue-300 bg-blue-900/30 px-1 py-0.5 rounded">{item.path}</span>
                                           {item.reserved && <Lock size={10} className="text-amber-500" />}
                                           <span className={`text-[9px] px-1 py-0.5 rounded ${SEVERITY_COLORS[item.severity]}`}>{item.severity}</span>
+                                          <span className={`text-[9px] px-1 py-0.5 rounded border ${DOMAIN_COLORS[item.domain] || 'bg-slate-800 text-slate-300 border-slate-600'}`}>{item.domain || 'Delivery'}</span>
+                                          {(item.dependencies || []).length > 0 && <span title={(item.dependencies || []).join(', ')} className="text-[9px] px-1 py-0.5 rounded bg-cyan-900/30 text-cyan-300 border border-cyan-800/50"><GitBranch size={9} className="inline mr-0.5" />{item.dependencies.length}</span>}
+                                          {item.riskLevel && item.riskLevel !== 'None' && <span className="text-[9px] px-1 py-0.5 rounded bg-red-900/30 text-red-300 border border-red-800/50">{item.riskLevel}</span>}
                                           <span className="text-[9px] text-slate-500" title={SIZE_LABELS[item.size]}>{item.size}</span>
                                         </div>
                                         <div className="flex items-center gap-1 flex-shrink-0">
@@ -1114,6 +1283,9 @@ function TaskDetailModal({ item, labels = DEFAULT_APP_CONFIG.labels, onClose, on
               <span className={`text-xs px-2 py-0.5 rounded ${SEVERITY_COLORS[item.severity]}`}>{item.severity}</span>
               <span className="text-xs text-slate-400 bg-slate-800 px-2 py-0.5 rounded">{item.size} - {SIZE_LABELS[item.size]}</span>
               <span className={`text-xs px-2 py-0.5 rounded ${tier.bgColor} ${tier.borderColor} border flex items-center gap-1`}><Layers size={10} className={tier.color} /><span className={tier.color}>{tier.label}</span></span>
+              <span className={`text-xs px-2 py-0.5 rounded border ${DOMAIN_COLORS[item.domain] || 'bg-slate-800 text-slate-300 border-slate-600'}`}>{item.domain || 'Delivery'}</span>
+              {item.riskLevel && item.riskLevel !== 'None' && <span className="text-xs px-2 py-0.5 rounded bg-red-900/40 text-red-300 border border-red-800/50">Risk {item.riskLevel}</span>}
+              {item.decisionStatus && item.decisionStatus !== 'None' && <span className="text-xs px-2 py-0.5 rounded bg-amber-900/40 text-amber-300 border border-amber-800/50">{item.decisionStatus}</span>}
               {stale && (<span className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded ${stale.level === 'critical' ? 'bg-red-900/40 text-red-300' : 'bg-yellow-900/40 text-yellow-300'}`}><AlertCircle size={10} />{stale.reason}</span>)}
             </div>
             <h2 className="text-lg font-bold leading-tight">{item.title}</h2>
@@ -1124,9 +1296,16 @@ function TaskDetailModal({ item, labels = DEFAULT_APP_CONFIG.labels, onClose, on
           <div><div className="text-xs text-slate-500 mb-1 flex items-center gap-1"><FileText size={12} />Description</div><div className="text-slate-200 whitespace-pre-wrap leading-relaxed">{item.description || <span className="italic text-slate-500">(none)</span>}</div></div>
           <div className="grid grid-cols-2 gap-3 text-xs">
             <div><div className="text-slate-500 mb-0.5 flex items-center gap-1"><Tag size={11} />Source</div><div className="text-slate-200">{item.source}</div></div>
+            <div><div className="text-slate-500 mb-0.5 flex items-center gap-1"><Tag size={11} />Domain</div><div className="text-slate-200">{item.domain || 'Delivery'}</div></div>
+            <div><div className="text-slate-500 mb-0.5 flex items-center gap-1"><Tag size={11} />Owner</div><div className="text-slate-200">{item.owner || <span className="italic text-slate-500">unassigned</span>}</div></div>
             <div><div className="text-slate-500 mb-0.5 flex items-center gap-1"><Tag size={11} />Column</div><select value={item.column} onChange={(e) => onMove(item.id, e.target.value)} className="bg-slate-800 border border-slate-700 rounded px-2 py-0.5 text-slate-200">{COLUMNS.map(c => <option key={c}>{c}</option>)}</select></div>
             <div><div className="text-slate-500 mb-0.5 flex items-center gap-1"><Calendar size={11} />Candidate {cycleNoun}</div><div className="text-blue-300">{item.candidateRound || <span className="italic text-slate-500">unassigned</span>}</div></div>
             <div><div className="text-slate-500 mb-0.5 flex items-center gap-1"><Calendar size={11} />Actual {cycleNoun}</div><div className="text-green-400">{item.actualRound || <span className="italic text-slate-500">-</span>}</div></div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+            <div><div className="text-slate-500 mb-0.5 flex items-center gap-1"><GitBranch size={11} />Dependencies</div><div className="text-cyan-300">{(item.dependencies || []).length ? item.dependencies.join(', ') : <span className="italic text-slate-500">none</span>}</div></div>
+            <div><div className="text-slate-500 mb-0.5 flex items-center gap-1"><Map size={11} />Roadmap</div><div className="text-purple-300">{item.roadmapStage || 'Backlog'}</div></div>
+            <div><div className="text-slate-500 mb-0.5 flex items-center gap-1"><Scale size={11} />Decision</div><div className="text-amber-300">{item.decisionStatus || 'None'}</div></div>
           </div>
           <div><div className="text-xs text-slate-500 mb-1 flex items-center gap-1"><FileText size={12} />Notes</div><div className="text-slate-200 whitespace-pre-wrap leading-relaxed bg-slate-950/50 border border-slate-800 rounded p-2 text-xs">{item.notes || <span className="italic text-slate-500">(none)</span>}</div></div>
           <div className="grid grid-cols-3 gap-3 text-[10px] text-slate-500 pt-2 border-t border-slate-800">
@@ -1151,11 +1330,12 @@ function ItemEditModal({ item, labels = DEFAULT_APP_CONFIG.labels, existingPaths
   const cycleNoun = cycleLabel.toLowerCase();
   const [form, setForm] = useState(item || {
     path: '', title: '', description: '', column: 'To Do', severity: 'Medium', size: 'M',
-    source: 'User', candidateRound: '', actualRound: '', reserved: false, notes: '', releaseTier: 'core_release'
+    source: 'User', candidateRound: '', actualRound: '', reserved: false, notes: '', releaseTier: 'core_release',
+    domain: 'Delivery', dependencies: [], riskLevel: 'None', roadmapStage: 'Now', decisionStatus: 'None', owner: ''
   });
   function submit() {
     if (!form.path.trim() || !form.title.trim()) { alert(`${workstreamLabel} and Title are required.`); return; }
-    onSave(form);
+    onSave({ ...form, dependencies: normalizeDependencyList(form.dependencies) });
   }
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
@@ -1185,6 +1365,16 @@ function ItemEditModal({ item, labels = DEFAULT_APP_CONFIG.labels, existingPaths
             <textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} rows={3} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1" />
           </div>
           <div className="grid grid-cols-2 gap-2">
+            <div><label className="block text-slate-500 mb-0.5">Domain</label>
+              <select value={form.domain || 'Delivery'} onChange={e => setForm({ ...form, domain: e.target.value })} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1">
+                {PROJECT_DOMAINS.map(domain => <option key={domain}>{domain}</option>)}
+              </select>
+            </div>
+            <div><label className="block text-slate-500 mb-0.5">Owner</label>
+              <input type="text" value={form.owner || ''} onChange={e => setForm({ ...form, owner: e.target.value })} placeholder="Human, team, or agent" className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
             <div><label className="block text-slate-500 mb-0.5">Column</label>
               <select value={form.column} onChange={e => setForm({ ...form, column: e.target.value })} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1">
                 {COLUMNS.map(c => <option key={c}>{c}</option>)}
@@ -1203,6 +1393,26 @@ function ItemEditModal({ item, labels = DEFAULT_APP_CONFIG.labels, existingPaths
             <div><label className="block text-slate-500 mb-0.5">Actual {cycleNoun}</label>
               <input type="text" value={form.actualRound || ''} onChange={e => setForm({ ...form, actualRound: e.target.value })} placeholder={`e.g. ${cycleLabel} 2`} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1" />
             </div>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <div><label className="block text-slate-500 mb-0.5">Risk</label>
+              <select value={form.riskLevel || 'None'} onChange={e => setForm({ ...form, riskLevel: e.target.value })} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1">
+                {RISK_LEVELS.map(level => <option key={level}>{level}</option>)}
+              </select>
+            </div>
+            <div><label className="block text-slate-500 mb-0.5">Roadmap</label>
+              <select value={form.roadmapStage || 'Backlog'} onChange={e => setForm({ ...form, roadmapStage: e.target.value })} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1">
+                {ROADMAP_STAGES.map(stage => <option key={stage}>{stage}</option>)}
+              </select>
+            </div>
+            <div><label className="block text-slate-500 mb-0.5">Decision</label>
+              <select value={form.decisionStatus || 'None'} onChange={e => setForm({ ...form, decisionStatus: e.target.value })} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1">
+                {DECISION_STATES.map(state => <option key={state}>{state}</option>)}
+              </select>
+            </div>
+          </div>
+          <div><label className="block text-slate-500 mb-0.5">Dependencies</label>
+            <input type="text" value={Array.isArray(form.dependencies) ? form.dependencies.join(', ') : (form.dependencies || '')} onChange={e => setForm({ ...form, dependencies: e.target.value })} placeholder="Item path/id/title, comma separated" className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1" />
           </div>
           <div><label className="block text-slate-500 mb-0.5">Source</label>
             <input type="text" value={form.source} onChange={e => setForm({ ...form, source: e.target.value })} placeholder="User / AI Agent / Reviewer / Risk" className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1" />

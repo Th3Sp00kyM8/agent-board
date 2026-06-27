@@ -16,6 +16,7 @@ It is designed for private project planning, not as a hosted multi-user service.
 - Tiered sections for Core Release, Post Release, and Future Content
 - Configurable project title and visible labels for workstreams and cycles
 - Sprint board for last/current/next cycle notes
+- Project Map panel for dependency tracing, open risks, roadmap stages, decisions, owners, and domains
 - One-click "Sync to Chat" summary copied to your clipboard
 - JSON export/import for full-state handoff or migration
 - Timestamped backups under `backups/`
@@ -93,7 +94,7 @@ You can also edit `config.json` directly after first run:
 
 Refresh the browser after direct file edits. `projectName` changes the app title. `labels.workstream` and `labels.cycle` update visible UI labels and the Sync to Chat summary.
 
-For deeper changes, edit `src/App.jsx` constants such as columns, tiers, and source legend. Those are intentionally small and near the top of the file.
+For deeper changes, edit `src/App.jsx` constants such as columns, tiers, source legend, project domains, roadmap stages, risk levels, and decision states. Those are intentionally small and near the top of the file.
 
 ## Resetting The Demo Data
 
@@ -113,9 +114,15 @@ Click `Backup` in the header to create a timestamped copy of `state.json` in `ba
 
 Use `Export` to download a full JSON copy of the board. Use `Import` to replace the current local board with a compatible JSON file. Create a backup first if the current board matters.
 
+## Project Map
+
+The Project Map is a compact planning layer above the board. Each item can carry a domain, owner, dependency list, risk level, roadmap stage, and decision state. Dependencies can point to another item by `id`, visible path such as `A`, or exact title. The panel then highlights unfinished dependency blockers, missing links, open risks, roadmap distribution, and pending decisions.
+
+These fields are intentionally generic so forks can rename them for software work, content planning, operations, research, or other project-management workflows without needing private data in the upstream template.
+
 ## Chat Handoffs
 
-Use `Sync to Chat` to copy a compact status summary. It includes counts, cycle notes, active work, blocked work, recent completions, and top unblocked tasks.
+Use `Sync to Chat` to copy a compact status summary. It includes counts, cycle notes, active work, blocked work, recent completions, dependency blockers, open risks, decisions, roadmap stages, domains, and top unblocked tasks.
 
 For a complete handoff, use `Export` and share the downloaded JSON file.
 

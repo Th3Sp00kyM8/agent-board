@@ -7,12 +7,14 @@ Agent Board is intentionally small and local-first. The goal is to stay easy to 
 - Keep first-run setup simple for template users
 - Keep sample data fake and generic
 - Improve import/export reliability
-- Improve documentation for adapting columns, tiers, and labels
+- Improve documentation for adapting columns, tiers, labels, and project-map domains
 - Keep dependency and GitHub Actions maintenance automated
 
 ## Likely Improvements
 
 - Optional board schema versioning for safer imports
+- Dependency graph filtering by domain, owner, and roadmap stage
+- Export presets for risk reviews, decision logs, and roadmap planning
 - Better validation messages for imported JSON files
 - More sample board presets for common workflows
 - Keyboard shortcuts for moving cards

@@ -4,6 +4,19 @@ All notable changes to Agent Board will be documented in this file.
 
 The format is based on Keep a Changelog, and this project uses simple `0.x` versions while the tool is early.
 
+## [0.2.0] - 2026-06-27
+
+### Added
+
+- Project Map panel for dependency tracing, risk register, roadmap stages, decisions, domains, and owners
+- Item metadata fields for dependencies, domain, risk level, roadmap stage, decision state, and owner
+- Sync-to-Chat export sections for dependency blockers, risks, decisions, roadmap, and domain counts
+- Sample-data and verification coverage for the new project-management fields
+
+### Changed
+
+- Expanded template documentation for adapting Agent Board beyond basic kanban tracking
+
 ## [0.1.1] - 2026-06-27
 
 ### Added

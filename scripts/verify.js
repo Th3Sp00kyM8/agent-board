@@ -10,9 +10,14 @@ const columns = ['To Do', 'Doing', 'In Review', 'Blocked', 'Done'];
 const severities = ['Critical', 'High', 'Medium', 'Low'];
 const sizes = ['S', 'M', 'L', 'XL'];
 const tiers = ['core_release', 'post_release', 'future_content'];
+const domains = ['Delivery', 'Dependency', 'Risk', 'Roadmap', 'Decision', 'Research', 'Design', 'Engineering', 'QA', 'Operations', 'Documentation', 'Stakeholder'];
+const roadmapStages = ['Now', 'Next', 'Later', 'Backlog'];
+const riskLevels = ['None', 'Low', 'Medium', 'High', 'Critical'];
+const decisionStates = ['None', 'Proposed', 'Accepted', 'Rejected', 'Deferred'];
 const requiredItemFields = [
   'id', 'path', 'title', 'description', 'column', 'severity', 'size', 'source',
   'releaseTier', 'candidateRound', 'actualRound', 'reserved', 'notes',
+  'domain', 'dependencies', 'riskLevel', 'roadmapStage', 'decisionStatus', 'owner',
   'createdAt', 'updatedAt', 'columnEnteredAt',
 ];
 const localOnlyFiles = ['state.json', 'config.json', 'backups/', '.env'];
@@ -107,6 +112,18 @@ function verifySampleState() {
   let blockedCount = 0;
   let doneCount = 0;
   let reservedCount = 0;
+  let dependencyCount = 0;
+  let openRiskCount = 0;
+  let roadmapPlanningCount = 0;
+  let decisionCount = 0;
+  const presentDomains = new Set();
+  const dependencyKeys = new Set();
+  for (const item of state.items) {
+    if (!item || typeof item !== 'object') continue;
+    for (const key of [item.id, item.path, item.title]) {
+      if (isNonEmptyString(key)) dependencyKeys.add(key.toLowerCase());
+    }
+  }
 
   for (const [index, item] of state.items.entries()) {
     const label = item && item.id ? item.id : `item at index ${index}`;
@@ -129,6 +146,21 @@ function verifySampleState() {
     expect(sizes.includes(item.size), `${label} size must be one of: ${sizes.join(', ')}.`);
     expect(isNonEmptyString(item.source), `${label} source must be a non-empty string.`);
     expect(tiers.includes(item.releaseTier), `${label} releaseTier must be one of: ${tiers.join(', ')}.`);
+    expect(domains.includes(item.domain), `${label} domain must be one of: ${domains.join(', ')}.`);
+    expect(Array.isArray(item.dependencies), `${label} dependencies must be an array.`);
+    if (Array.isArray(item.dependencies)) {
+      for (const dependency of item.dependencies) {
+        expect(isNonEmptyString(dependency), `${label} dependencies must only contain non-empty strings.`);
+        if (isNonEmptyString(dependency)) {
+          dependencyCount += 1;
+          expect(dependencyKeys.has(dependency.toLowerCase()), `${label} dependency '${dependency}' should match another item id, path, or title.`);
+        }
+      }
+    }
+    expect(riskLevels.includes(item.riskLevel), `${label} riskLevel must be one of: ${riskLevels.join(', ')}.`);
+    expect(roadmapStages.includes(item.roadmapStage), `${label} roadmapStage must be one of: ${roadmapStages.join(', ')}.`);
+    expect(decisionStates.includes(item.decisionStatus), `${label} decisionStatus must be one of: ${decisionStates.join(', ')}.`);
+    expect(typeof item.owner === 'string', `${label} owner must be a string.`);
     expect(isNullableString(item.candidateRound), `${label} candidateRound must be a string or null.`);
     expect(isNullableString(item.actualRound), `${label} actualRound must be a string or null.`);
     expect(typeof item.reserved === 'boolean', `${label} reserved must be a boolean.`);
@@ -138,6 +170,10 @@ function verifySampleState() {
     expect(isIsoDate(item.columnEnteredAt), `${label} columnEnteredAt must be parseable ISO-like text.`);
 
     presentColumns.add(item.column);
+    presentDomains.add(item.domain);
+    if (item.riskLevel !== 'None') openRiskCount += 1;
+    if (item.roadmapStage !== 'Now') roadmapPlanningCount += 1;
+    if (item.decisionStatus !== 'None') decisionCount += 1;
     if (item.column === 'Blocked') blockedCount += 1;
     if (item.column === 'Done') doneCount += 1;
     if (item.reserved) reservedCount += 1;
@@ -149,6 +185,11 @@ function verifySampleState() {
   expect(blockedCount > 0, 'sample.state.json should include at least one blocked item.');
   expect(doneCount > 0, 'sample.state.json should include at least one done item.');
   expect(reservedCount > 0, 'sample.state.json should include at least one reserved item.');
+  expect(dependencyCount > 0, 'sample.state.json should include at least one dependency link.');
+  expect(openRiskCount > 0, 'sample.state.json should include at least one non-None riskLevel.');
+  expect(roadmapPlanningCount > 0, 'sample.state.json should include at least one future roadmapStage.');
+  expect(decisionCount > 0, 'sample.state.json should include at least one non-None decisionStatus.');
+  expect(presentDomains.size >= 4, 'sample.state.json should include at least four project domains.');
 
   const sprintBoard = state.sprintBoard || {};
   for (const field of ['lastRoundLabel', 'lastRoundSummary', 'currentRound', 'currentRoundGoal', 'nextRound', 'nextRoundGoal']) {
@@ -206,6 +247,7 @@ function verifyReleaseAssets() {
   expect(readme.includes('docs/PUBLISHING.md'), 'README should link to docs/PUBLISHING.md.');
   expect(readme.includes('docs/TEMPLATE_USE.md'), 'README should link to docs/TEMPLATE_USE.md.');
   expect(readme.includes('docs/ROADMAP.md'), 'README should link to docs/ROADMAP.md.');
+  expect(readme.includes('Project Map'), 'README should document the Project Map feature.');
   expect(readme.includes('CODE_OF_CONDUCT.md'), 'README should link to CODE_OF_CONDUCT.md.');
   expect(readme.includes('SUPPORT.md'), 'README should link to SUPPORT.md.');
 }
