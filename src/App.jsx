@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Plus, X, Edit2, Trash2, Copy, Download, Upload, Search, AlertTriangle, RotateCcw, Lock, ChevronDown, ChevronRight, ChevronLeft, Check, Calendar, Tag, FileText, ArrowRight, Palette, MessageSquare, Info, Target, Zap, AlertCircle, Save, WifiOff, Layers, Settings, GitBranch, ShieldAlert, Map, Scale } from 'lucide-react';
+import { Plus, X, Edit2, Trash2, Copy, Download, Upload, Search, AlertTriangle, RotateCcw, Lock, ChevronDown, ChevronRight, ChevronLeft, Check, Calendar, Tag, FileText, ArrowRight, Palette, MessageSquare, Info, Target, Zap, AlertCircle, Save, WifiOff, Layers, Settings, GitBranch, ShieldAlert, Map, Scale, Undo2 } from 'lucide-react';
 
 const BOARD_SCHEMA_VERSION = 2;
 const BOARD_STATE_VERSION = 'agent-board-state-v2';
@@ -71,6 +71,10 @@ const SCROLLBAR_STYLE = `
 .tk-vscroll::-webkit-scrollbar-track { background: transparent; }
 .tk-vscroll::-webkit-scrollbar-thumb { background: rgb(51 65 85); border-radius: 4px; }
 .tk-vscroll::-webkit-scrollbar-thumb:hover { background: rgb(71 85 105); }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 2px solid rgb(96 165 250);
+  outline-offset: 2px;
+}
 `;
 
 const DEFAULT_APP_CONFIG = {
@@ -417,10 +421,12 @@ export default function App() {
   const [legendCollapsed, setLegendCollapsed] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
   const [insightsExpanded, setInsightsExpanded] = useState(true);
+  const [undoState, setUndoState] = useState(null);
   // Set of "column:tier" strings indicating collapsed sections
   const [collapsedSections, setCollapsedSections] = useState(() => new Set());
 
   const saveTimeout = useRef(null);
+  const undoTimeout = useRef(null);
   const scrollContainerRef = useRef(null);
   const scrollIntervalRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -556,6 +562,12 @@ export default function App() {
     return () => stopAutoScroll();
   }, [dragId]);
 
+  useEffect(() => {
+    return () => {
+      if (undoTimeout.current) clearTimeout(undoTimeout.current);
+    };
+  }, []);
+
   const filtered = items.filter(item => {
     if (filterColumn !== 'All' && item.column !== filterColumn) return false;
     if (filterReleaseTier !== 'All' && item.releaseTier !== filterReleaseTier) return false;
@@ -612,6 +624,40 @@ export default function App() {
   const cycleLabel = labels.cycle || 'Sprint';
   const cycleNoun = cycleLabel.toLowerCase();
   const workstreamName = (item) => `${workstreamLabel} ${item.path}`;
+  const onboardingSteps = [
+    {
+      id: 'template',
+      label: 'Choose a starting point',
+      done: items.length > 0 || window.localStorage?.getItem('agent-board-template-chooser-seen') === '1',
+      action: 'Templates',
+      onAction: () => setShowTemplateChooser(true),
+    },
+    {
+      id: 'first-item',
+      label: 'Add your first real work item',
+      done: items.length > 0,
+      action: 'Add work',
+      onAction: () => setShowAdd(true),
+    },
+    {
+      id: 'owner',
+      label: 'Assign owner and domain',
+      done: items.some(i => (i.owner || '').trim() && (i.domain || '').trim()),
+      action: 'Open item',
+      onAction: () => {
+        const target = items.find(i => !(i.owner || '').trim() || !(i.domain || '').trim()) || items[0];
+        if (target) setViewingItem(target);
+      },
+    },
+    {
+      id: 'movement',
+      label: 'Move one item into active work',
+      done: items.some(i => ['Doing', 'In Review', 'Done'].includes(i.column)),
+      action: 'Review board',
+      onAction: () => {},
+    },
+  ];
+  const completedOnboardingSteps = onboardingSteps.filter(step => step.done).length;
 
   function toggleSection(column, tier) {
     const key = `${column}:${tier}`;
@@ -623,13 +669,37 @@ export default function App() {
     });
   }
 
+  function pushUndo(message, snapshot = {}) {
+    if (undoTimeout.current) clearTimeout(undoTimeout.current);
+    setUndoState({
+      message,
+      items: snapshot.items || items,
+      sprintBoard: snapshot.sprintBoard || sprintBoard,
+      selectedIds: snapshot.selectedIds || selectedIds,
+    });
+    undoTimeout.current = setTimeout(() => setUndoState(null), 8000);
+  }
+
+  function restoreUndo() {
+    if (!undoState) return;
+    setItems(undoState.items);
+    setSprintBoard(undoState.sprintBoard);
+    setSelectedIds(undoState.selectedIds || []);
+    setShowTemplateChooser(false);
+    setShowResetConfirm(false);
+    setUndoState(null);
+    if (undoTimeout.current) clearTimeout(undoTimeout.current);
+  }
+
   function moveItem(itemId, newColumn) {
     const item = items.find(i => i.id === itemId);
     if (!item) return;
+    if (item.column === newColumn) return;
     if (item.reserved && newColumn === 'Doing') {
       alert(`${workstreamName(item)} is RESERVED. Cannot move to Doing without explicit un-flag.`);
       return;
     }
+    pushUndo(`Moved ${workstreamName(item)} to ${newColumn}.`);
     const updates = { column: newColumn, updatedAt: nowIso() };
     if (item.column !== newColumn) updates.columnEnteredAt = nowIso();
     setItems(items.map(i => i.id === itemId ? { ...i, ...updates } : i));
@@ -641,6 +711,7 @@ export default function App() {
       alert(`${reservedBlock.length} reserved items cannot be moved to Doing.`);
       return;
     }
+    pushUndo(`Moved ${selectedIds.length} selected items to ${newColumn}.`);
     setItems(items.map(i => {
       if (!selectedIds.includes(i.id)) return i;
       const updates = { column: newColumn, updatedAt: nowIso() };
@@ -652,12 +723,14 @@ export default function App() {
   }
 
   function bulkSetTier(newTier) {
+    pushUndo(`Updated release tier for ${selectedIds.length} items.`);
     setItems(items.map(i => selectedIds.includes(i.id) ? { ...i, releaseTier: newTier, updatedAt: nowIso() } : i));
     setShowBulkTier(false);
     setSelectedIds([]);
   }
 
   function bulkSetCandidateRound() {
+    pushUndo(`Updated candidate ${cycleNoun} for ${selectedIds.length} items.`);
     setItems(items.map(i => selectedIds.includes(i.id) ? { ...i, candidateRound: bulkRoundValue || null, updatedAt: nowIso() } : i));
     setShowBulkRound(false);
     setBulkRoundValue('');
@@ -665,12 +738,15 @@ export default function App() {
   }
 
   function bulkDelete() {
-    if (!confirm(`Delete ${selectedIds.length} selected items? This cannot be undone.`)) return;
+    if (!confirm(`Delete ${selectedIds.length} selected items? You can undo for a few seconds.`)) return;
+    pushUndo(`Deleted ${selectedIds.length} selected items.`);
     setItems(items.filter(i => !selectedIds.includes(i.id)));
     setSelectedIds([]);
   }
 
   function deleteItem(itemId) {
+    const item = items.find(i => i.id === itemId);
+    if (item) pushUndo(`Deleted ${workstreamName(item)}.`);
     setItems(items.filter(i => i.id !== itemId));
     setSelectedIds(selectedIds.filter(id => id !== itemId));
     setViewingItem(null);
@@ -710,6 +786,7 @@ export default function App() {
 
   function applyTemplate(template) {
     const next = instantiateTemplate(template);
+    pushUndo(`Applied ${template.title} template.`);
     setItems(next.items);
     setSprintBoard(next.sprintBoard);
     setSelectedIds([]);
@@ -726,6 +803,7 @@ export default function App() {
   }
 
   function resetAll() {
+    pushUndo('Reset board.');
     setItems([]);
     setSprintBoard(DEFAULT_SPRINT_BOARD);
     setShowResetConfirm(false);
@@ -1064,6 +1142,28 @@ export default function App() {
                 <DashboardList title="Blocked By" emptyText="No dependency blockers." items={dependencyTrace.blocked.slice(0, 5).map(edge => edge.item)} accent="text-red-300" onOpen={setViewingItem} metaFor={(item) => { const edge = dependencyTrace.blocked.find(e => e.item.id === item.id); return edge ? 'Waits on ' + edge.dependency.path : 'Blocked'; }} />
                 <DashboardList title="Next Up" emptyText="No ready work in To Do." items={nextUpItems} accent="text-blue-300" onOpen={setViewingItem} metaFor={(item) => item.owner || item.candidateRound || item.source} />
               </div>
+              {completedOnboardingSteps < onboardingSteps.length && (
+                <div className="mt-3 border-t border-slate-800 pt-3">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wider text-slate-500">Start Here</div>
+                      <div className="text-xs text-slate-300">{completedOnboardingSteps}/{onboardingSteps.length} setup steps complete</div>
+                    </div>
+                    <button onClick={() => setShowAdd(true)} className="px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded text-[10px] flex items-center gap-1"><Plus size={11} />Add work</button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5">
+                    {onboardingSteps.map(step => (
+                      <button key={step.id} onClick={step.onAction} disabled={step.done && step.id === 'movement'} className={`text-left px-2 py-1.5 rounded border flex items-center gap-2 ${step.done ? 'bg-green-950/20 border-green-800/40 text-green-300' : 'bg-slate-950/50 border-slate-800 text-slate-300 hover:border-slate-600'}`}>
+                        <span className={`w-4 h-4 rounded-full border flex items-center justify-center flex-shrink-0 ${step.done ? 'bg-green-700 border-green-500 text-white' : 'border-slate-600 text-slate-500'}`}>{step.done ? <Check size={10} /> : <span className="text-[9px]">{onboardingSteps.indexOf(step) + 1}</span>}</span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-[11px] truncate">{step.label}</span>
+                          {!step.done && <span className="block text-[9px] text-blue-300">{step.action}</span>}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="bg-slate-900/60 border border-slate-800 rounded">
@@ -1305,6 +1405,14 @@ export default function App() {
             </div>
           )}
         </div>
+
+        {undoState && (
+          <div role="status" aria-live="polite" className="fixed bottom-3 left-3 bg-slate-900 border border-blue-700/60 rounded shadow-lg z-40 px-3 py-2 flex items-center gap-3 text-xs">
+            <div className="text-slate-200">{undoState.message}</div>
+            <button onClick={restoreUndo} className="px-2 py-1 bg-blue-600 hover:bg-blue-500 rounded flex items-center gap-1"><Undo2 size={12} />Undo</button>
+            <button onClick={() => setUndoState(null)} className="text-slate-500 hover:text-slate-200" aria-label="Dismiss undo message"><X size={14} /></button>
+          </div>
+        )}
 
         {viewingItem && <TaskDetailModal item={viewingItem} labels={labels} onClose={() => setViewingItem(null)} onEdit={() => { setEditingItem(viewingItem); setViewingItem(null); }} onDelete={(id) => { if (confirm(`Delete ${workstreamLabel.toLowerCase()} ${viewingItem.path}?`)) deleteItem(id); }} onMove={(id, col) => moveItem(id, col)} />}
         {(editingItem || showAdd) && <ItemEditModal item={editingItem} labels={labels} existingPaths={existingPaths} onSave={saveItem} onClose={() => { setEditingItem(null); setShowAdd(false); }} />}
@@ -1633,6 +1741,7 @@ function ItemEditModal({ item, labels = DEFAULT_APP_CONFIG.labels, existingPaths
   const workstreamLabel = labels.workstream || 'Workstream';
   const cycleLabel = labels.cycle || 'Sprint';
   const cycleNoun = cycleLabel.toLowerCase();
+  const [showAdvanced, setShowAdvanced] = useState(Boolean(item));
   const [form, setForm] = useState(item || {
     path: '', title: '', description: '', column: 'To Do', severity: 'Medium', size: 'M',
     source: 'User', candidateRound: '', actualRound: '', reserved: false, notes: '', releaseTier: 'core_release',
@@ -1643,91 +1752,112 @@ function ItemEditModal({ item, labels = DEFAULT_APP_CONFIG.labels, existingPaths
     onSave({ ...form, dependencies: normalizeDependencyList(form.dependencies) });
   }
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50" role="dialog" aria-modal="true" aria-label={item ? `Edit ${workstreamLabel.toLowerCase()} ${item.path}` : 'Add work item'}>
       <div className="bg-slate-900 border border-slate-700 rounded-lg max-w-2xl w-full max-h-[90vh] flex flex-col">
-        <div className="flex items-center justify-between p-3 border-b border-slate-800"><h2 className="text-base font-bold">{item ? `Edit ${workstreamLabel.toLowerCase()} ${item.path}` : 'Add Item'}</h2><button onClick={onClose} className="text-slate-400 hover:text-slate-200"><X size={18} /></button></div>
-        <div className="p-3 overflow-y-auto flex-1 space-y-2 text-xs">
-          <div className="grid grid-cols-3 gap-2">
-            <div><label className="block text-slate-500 mb-0.5">{workstreamLabel} *</label>
-              <input type="text" value={form.path} onChange={e => setForm({ ...form, path: e.target.value })} placeholder={suggestedWorkstream ? `e.g. ${suggestedWorkstream}` : 'e.g. A'} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1" />
-              {suggestedWorkstream && !form.path && <button onClick={() => setForm({ ...form, path: suggestedWorkstream })} className="text-[10px] text-blue-400 hover:underline mt-0.5">Use suggested: {suggestedWorkstream}</button>}
-            </div>
-            <div><label className="block text-slate-500 mb-0.5">Severity</label>
-              <select value={form.severity} onChange={e => setForm({ ...form, severity: e.target.value })} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1">
-                <option>Critical</option><option>High</option><option>Medium</option><option>Low</option>
-              </select>
-            </div>
-            <div><label className="block text-slate-500 mb-0.5">Size</label>
-              <select value={form.size} onChange={e => setForm({ ...form, size: e.target.value })} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1">
-                <option value="S">S (~60 min)</option><option value="M">M (~120 min)</option><option value="L">L (~180 min)</option><option value="XL">XL (~240+ min)</option>
-              </select>
-            </div>
+        <div className="flex items-center justify-between p-3 border-b border-slate-800">
+          <div>
+            <h2 className="text-base font-bold">{item ? `Edit ${workstreamLabel.toLowerCase()} ${item.path}` : 'Add work'}</h2>
+            <div className="text-[11px] text-slate-500 mt-0.5">Start with the essentials. Expand advanced fields only when the work needs them.</div>
           </div>
-          <div><label className="block text-slate-500 mb-0.5">Title *</label>
-            <input type="text" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1" />
-          </div>
-          <div><label className="block text-slate-500 mb-0.5">Description</label>
-            <textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} rows={3} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1" />
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div><label className="block text-slate-500 mb-0.5">Domain</label>
-              <select value={form.domain || 'Delivery'} onChange={e => setForm({ ...form, domain: e.target.value })} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1">
-                {PROJECT_DOMAINS.map(domain => <option key={domain}>{domain}</option>)}
-              </select>
-            </div>
-            <div><label className="block text-slate-500 mb-0.5">Owner</label>
-              <input type="text" value={form.owner || ''} onChange={e => setForm({ ...form, owner: e.target.value })} placeholder="Human, team, or agent" className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1" />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div><label className="block text-slate-500 mb-0.5">Column</label>
-              <select value={form.column} onChange={e => setForm({ ...form, column: e.target.value })} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1">
-                {COLUMNS.map(c => <option key={c}>{c}</option>)}
-              </select>
-            </div>
-            <div><label className="block text-slate-500 mb-0.5">Release Tier</label>
-              <select value={form.releaseTier || 'core_release'} onChange={e => setForm({ ...form, releaseTier: e.target.value })} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1">
-                {RELEASE_TIERS.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
-              </select>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div><label className="block text-slate-500 mb-0.5">Candidate {cycleNoun}</label>
-              <input type="text" value={form.candidateRound || ''} onChange={e => setForm({ ...form, candidateRound: e.target.value })} placeholder={`e.g. ${cycleLabel} 2`} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1" />
-            </div>
-            <div><label className="block text-slate-500 mb-0.5">Actual {cycleNoun}</label>
-              <input type="text" value={form.actualRound || ''} onChange={e => setForm({ ...form, actualRound: e.target.value })} placeholder={`e.g. ${cycleLabel} 2`} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1" />
-            </div>
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            <div><label className="block text-slate-500 mb-0.5">Risk</label>
-              <select value={form.riskLevel || 'None'} onChange={e => setForm({ ...form, riskLevel: e.target.value })} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1">
-                {RISK_LEVELS.map(level => <option key={level}>{level}</option>)}
-              </select>
-            </div>
-            <div><label className="block text-slate-500 mb-0.5">Roadmap</label>
-              <select value={form.roadmapStage || 'Backlog'} onChange={e => setForm({ ...form, roadmapStage: e.target.value })} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1">
-                {ROADMAP_STAGES.map(stage => <option key={stage}>{stage}</option>)}
-              </select>
-            </div>
-            <div><label className="block text-slate-500 mb-0.5">Decision</label>
-              <select value={form.decisionStatus || 'None'} onChange={e => setForm({ ...form, decisionStatus: e.target.value })} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1">
-                {DECISION_STATES.map(state => <option key={state}>{state}</option>)}
-              </select>
-            </div>
-          </div>
-          <div><label className="block text-slate-500 mb-0.5">Dependencies</label>
-            <input type="text" value={Array.isArray(form.dependencies) ? form.dependencies.join(', ') : (form.dependencies || '')} onChange={e => setForm({ ...form, dependencies: e.target.value })} placeholder="Item path/id/title, comma separated" className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1" />
-          </div>
-          <div><label className="block text-slate-500 mb-0.5">Source</label>
-            <input type="text" value={form.source} onChange={e => setForm({ ...form, source: e.target.value })} placeholder="User / AI Agent / Reviewer / Risk" className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1" />
-          </div>
-          <div><label className="block text-slate-500 mb-0.5">Notes</label>
-            <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={3} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1" />
-          </div>
-          <label className="flex items-center gap-2"><input type="checkbox" checked={form.reserved} onChange={e => setForm({ ...form, reserved: e.target.checked })} className="accent-amber-500" /><span>Reserved <span className="text-slate-500">(hard-blocks moving to Doing)</span></span></label>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-200" aria-label="Close editor"><X size={18} /></button>
         </div>
-        <div className="p-3 border-t border-slate-800 flex justify-end gap-2"><button onClick={onClose} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded text-xs">Cancel</button><button onClick={submit} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-xs">Save</button></div>
+        <div className="p-3 overflow-y-auto flex-1 space-y-3 text-xs">
+          <div className="bg-slate-950/40 border border-slate-800 rounded p-3 space-y-2">
+            <div className="flex items-center gap-2 text-slate-300 font-semibold mb-1"><Zap size={13} className="text-blue-400" />Essentials</div>
+            <div className="grid grid-cols-1 sm:grid-cols-[120px_1fr] gap-2">
+              <div><label className="block text-slate-500 mb-0.5">{workstreamLabel} *</label>
+                <input type="text" value={form.path} onChange={e => setForm({ ...form, path: e.target.value })} placeholder={suggestedWorkstream ? `e.g. ${suggestedWorkstream}` : 'e.g. A'} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5" autoFocus />
+                {suggestedWorkstream && !form.path && <button onClick={() => setForm({ ...form, path: suggestedWorkstream })} className="text-[10px] text-blue-400 hover:underline mt-0.5">Use {suggestedWorkstream}</button>}
+              </div>
+              <div><label className="block text-slate-500 mb-0.5">Title *</label>
+                <input type="text" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="What needs to happen?" className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5" />
+              </div>
+            </div>
+            <div><label className="block text-slate-500 mb-0.5">Description</label>
+              <textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} rows={3} placeholder="Outcome, context, or acceptance notes" className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5" />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div><label className="block text-slate-500 mb-0.5">Owner</label>
+                <input type="text" value={form.owner || ''} onChange={e => setForm({ ...form, owner: e.target.value })} placeholder="Human, team, or agent" className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5" />
+              </div>
+              <div><label className="block text-slate-500 mb-0.5">Domain</label>
+                <select value={form.domain || 'Delivery'} onChange={e => setForm({ ...form, domain: e.target.value })} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5">
+                  {PROJECT_DOMAINS.map(domain => <option key={domain}>{domain}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div><label className="block text-slate-500 mb-0.5">Status</label>
+                <select value={form.column} onChange={e => setForm({ ...form, column: e.target.value })} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5">
+                  {COLUMNS.map(c => <option key={c}>{c}</option>)}
+                </select>
+              </div>
+              <div><label className="block text-slate-500 mb-0.5">Priority</label>
+                <select value={form.severity} onChange={e => setForm({ ...form, severity: e.target.value })} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5">
+                  <option>Critical</option><option>High</option><option>Medium</option><option>Low</option>
+                </select>
+              </div>
+              <div><label className="block text-slate-500 mb-0.5">Size</label>
+                <select value={form.size} onChange={e => setForm({ ...form, size: e.target.value })} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5">
+                  <option value="S">S (~60 min)</option><option value="M">M (~120 min)</option><option value="L">L (~180 min)</option><option value="XL">XL (~240+ min)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <button onClick={() => setShowAdvanced(!showAdvanced)} className="w-full px-3 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded flex items-center justify-between text-left">
+            <span className="flex items-center gap-2 text-slate-300 font-semibold"><GitBranch size={13} className="text-cyan-400" />Advanced planning fields</span>
+            <span className="flex items-center gap-2 text-[10px] text-slate-500">{showAdvanced ? 'Hide' : 'Show'} {showAdvanced ? <ChevronDown size={13} /> : <ChevronRight size={13} />}</span>
+          </button>
+
+          {showAdvanced && (
+            <div className="bg-slate-950/40 border border-slate-800 rounded p-3 space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <div><label className="block text-slate-500 mb-0.5">Release Tier</label>
+                  <select value={form.releaseTier || 'core_release'} onChange={e => setForm({ ...form, releaseTier: e.target.value })} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1">
+                    {RELEASE_TIERS.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+                  </select>
+                </div>
+                <div><label className="block text-slate-500 mb-0.5">Source</label>
+                  <input type="text" value={form.source} onChange={e => setForm({ ...form, source: e.target.value })} placeholder="User / AI Agent / Reviewer / Risk" className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div><label className="block text-slate-500 mb-0.5">Candidate {cycleNoun}</label>
+                  <input type="text" value={form.candidateRound || ''} onChange={e => setForm({ ...form, candidateRound: e.target.value })} placeholder={`e.g. ${cycleLabel} 2`} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1" />
+                </div>
+                <div><label className="block text-slate-500 mb-0.5">Actual {cycleNoun}</label>
+                  <input type="text" value={form.actualRound || ''} onChange={e => setForm({ ...form, actualRound: e.target.value })} placeholder={`e.g. ${cycleLabel} 2`} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1" />
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div><label className="block text-slate-500 mb-0.5">Risk</label>
+                  <select value={form.riskLevel || 'None'} onChange={e => setForm({ ...form, riskLevel: e.target.value })} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1">
+                    {RISK_LEVELS.map(level => <option key={level}>{level}</option>)}
+                  </select>
+                </div>
+                <div><label className="block text-slate-500 mb-0.5">Roadmap</label>
+                  <select value={form.roadmapStage || 'Backlog'} onChange={e => setForm({ ...form, roadmapStage: e.target.value })} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1">
+                    {ROADMAP_STAGES.map(stage => <option key={stage}>{stage}</option>)}
+                  </select>
+                </div>
+                <div><label className="block text-slate-500 mb-0.5">Decision</label>
+                  <select value={form.decisionStatus || 'None'} onChange={e => setForm({ ...form, decisionStatus: e.target.value })} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1">
+                    {DECISION_STATES.map(state => <option key={state}>{state}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div><label className="block text-slate-500 mb-0.5">Dependencies</label>
+                <input type="text" value={Array.isArray(form.dependencies) ? form.dependencies.join(', ') : (form.dependencies || '')} onChange={e => setForm({ ...form, dependencies: e.target.value })} placeholder="Item path/id/title, comma separated" className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1" />
+              </div>
+              <div><label className="block text-slate-500 mb-0.5">Notes</label>
+                <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={3} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1" />
+              </div>
+              <label className="flex items-center gap-2"><input type="checkbox" checked={form.reserved} onChange={e => setForm({ ...form, reserved: e.target.checked })} className="accent-amber-500" /><span>Reserved <span className="text-slate-500">(hard-blocks moving to Doing)</span></span></label>
+            </div>
+          )}
+        </div>
+        <div className="p-3 border-t border-slate-800 flex justify-end gap-2"><button onClick={onClose} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded text-xs">Cancel</button><button onClick={submit} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-xs flex items-center gap-1.5"><Save size={12} />Save</button></div>
       </div>
     </div>
   );

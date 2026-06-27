@@ -13,8 +13,12 @@ It is designed for private project planning, not as a hosted multi-user service.
 ## Features
 
 - First-run template chooser for blank, demo, software, creator launch, research, and operations boards
+- Start Here checklist that guides a new board through setup without separate documentation
 - Focus Dashboard that immediately surfaces attention items, blockers, next work, risks, decisions, and roadmap load
 - Local kanban board with To Do, Doing, In Review, Blocked, and Done columns
+- Essentials-first item editor with advanced planning fields available on demand
+- Undo snackbar for moves, bulk edits, deletes, reset, and template application
+- Visible keyboard focus states for common controls
 - Tiered sections for Core Release, Post Release, and Future Content
 - Configurable project title and visible labels for workstreams and cycles
 - Sprint board for last/current/next cycle notes
@@ -64,6 +68,8 @@ On first run, the server creates local files from the committed examples:
 The generated `config.json`, `state.json`, and `backups/` folder are ignored by Git. They are your local working data.
 
 When the board is blank or still on the demo sample, Agent Board opens a template chooser so new users can start from a blank board, demo board, software project, creator launch, research project, or operations tracker. You can reopen it later from `Templates` in the header.
+
+The Focus Dashboard also includes a Start Here checklist until the board has a starting point, real work, an owner/domain, and at least one item in active work. This keeps onboarding inside the tool instead of forcing new users to read the README first.
 
 ## Local Files
 
@@ -121,6 +127,12 @@ Use `Export` to download a full JSON copy of the board. Exports include `app`, `
 ## Templates
 
 Use `Templates` to replace the current board with a practical starter workflow. Templates are intentionally generic and local-only: applying one writes to your ignored `state.json`, not to the committed sample. Create a backup first if the current board matters.
+
+## Editing Work
+
+Click `Add work` or edit any card to open the essentials-first item editor. The default view asks for the fields most people need immediately: work item id, title, description, owner, domain, status, priority, and size. Use `Advanced planning fields` for release tier, source, cycle assignment, risk, roadmap, decision state, dependencies, notes, and reserved status.
+
+Most risky changes show a short-lived undo snackbar, including card moves, bulk edits, deletes, resets, and template application.
 
 ## Focus Dashboard
 

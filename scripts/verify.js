@@ -255,6 +255,9 @@ function verifyReleaseAssets() {
   expect(readme.includes('docs/ROADMAP.md'), 'README should link to docs/ROADMAP.md.');
   expect(readme.includes('Templates'), 'README should document the Templates feature.');
   expect(readme.includes('software project'), 'README should document template presets.');
+  expect(readme.includes('Start Here checklist'), 'README should document the Start Here onboarding checklist.');
+  expect(readme.includes('essentials-first item editor'), 'README should document the simplified editor.');
+  expect(readme.includes('undo snackbar'), 'README should document undo affordances.');
   expect(readme.includes('Focus Dashboard'), 'README should document the Focus Dashboard feature.');
   expect(readme.includes('Project Map'), 'README should document the Project Map feature.');
   expect(readme.includes('schemaVersion'), 'README should document board schema metadata.');

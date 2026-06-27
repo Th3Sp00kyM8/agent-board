@@ -4,7 +4,8 @@ Agent Board is intentionally small and local-first. The goal is to stay easy to 
 
 ## Current Focus
 
-- Keep first-run setup simple for template users
+- Keep first-run and early-use setup simple for template users
+- Keep the editing flow essentials-first, with advanced fields available on demand
 - Keep sample data fake and generic
 - Improve import/export reliability
 - Improve documentation for adapting columns, tiers, labels, and project-map domains
@@ -13,12 +14,13 @@ Agent Board is intentionally small and local-first. The goal is to stay easy to 
 ## Likely Improvements
 
 - More template presets and template customization controls
+- Command palette for quick add, search, jump, templates, export, and backup
+- Modal focus trapping and deeper keyboard-only board navigation
 - Better import preview for schema warnings and replacement scope
 - Dependency graph filtering by domain, owner, and roadmap stage
 - Export presets for risk reviews, decision logs, and roadmap planning
 - Better validation messages for imported JSON files
 - More sample board presets for common workflows
-- Keyboard shortcuts for moving cards
 - Search and filter controls for larger boards
 - Optional archived-item view
 

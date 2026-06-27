@@ -4,6 +4,19 @@ All notable changes to Agent Board will be documented in this file.
 
 The format is based on Keep a Changelog, and this project uses simple `0.x` versions while the tool is early.
 
+## [0.5.0] - 2026-06-27
+
+### Added
+
+- Start Here checklist in the Focus Dashboard so new users can complete the first setup actions without reading docs
+- Undo snackbar for moves, bulk updates, deletes, resets, and template application
+- Visible keyboard focus styles across buttons, inputs, selects, and textareas
+
+### Changed
+
+- Simplified the item editor into an essentials-first form with advanced planning fields behind a disclosure control
+- Updated README docs for instant-usability workflow improvements
+
 ## [0.4.0] - 2026-06-27
 
 ### Added
