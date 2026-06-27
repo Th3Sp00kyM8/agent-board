@@ -4,6 +4,20 @@ All notable changes to Agent Board will be documented in this file.
 
 The format is based on Keep a Changelog, and this project uses simple `0.x` versions while the tool is early.
 
+## [0.1.1] - 2026-06-27
+
+### Added
+
+- Public repository metadata, README badges, and clone-first setup instructions
+- GitHub template repository guidance for new project boards
+- Community support docs, code of conduct, and roadmap
+- Dependabot automation for npm and GitHub Actions maintenance
+
+### Changed
+
+- Updated GitHub Actions versions to current releases
+- Configured Dependabot to use the public npm registry
+
 ## [0.1.0] - 2026-06-26
 
 ### Added
