@@ -4,6 +4,19 @@ All notable changes to Agent Board will be documented in this file.
 
 The format is based on Keep a Changelog, and this project uses simple `0.x` versions while the tool is early.
 
+## [0.12.0] - 2026-06-28
+
+### Added
+
+- Rename controls for saved Project Map presets after creation
+- Stakeholder, weekly update, and release review markdown export presets
+- Import dry-run warnings that explain alias-mapped column and release-tier mismatches
+
+### Changed
+
+- Export presets now cover chat handoff, risk review, decision log, roadmap, stakeholder, weekly, and release-review workflows
+- Import preview warnings now include expected values when mapped fields still need cleanup
+
 ## [0.11.0] - 2026-06-28
 
 ### Added

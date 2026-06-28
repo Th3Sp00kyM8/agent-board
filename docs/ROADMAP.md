@@ -17,10 +17,10 @@ Agent Board is intentionally small and local-first. The goal is to stay easy to 
 
 - More template presets and template customization controls
 - Richer recent-item jump history
-- Editable saved Project Map preset names after creation
-- Additional export preset formats for stakeholder, weekly, and release review summaries
+- Saved map preset grouping and sharing
+- Additional export preset formats for support, audit, and planning summaries
 - More import alias presets for CSV-like trackers and spreadsheet exports
-- Better validation messages for imported JSON files
+- Inline remediation tips for imported JSON files
 - More sample board presets for common workflows
 - Search and filter controls for larger boards
 - Optional archived-item view

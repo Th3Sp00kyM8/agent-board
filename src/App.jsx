@@ -438,6 +438,7 @@ function createStatePayload(items, sprintBoard, extra = {}) {
 
 function mapImportItemFields(rawItems, importAliases = IMPORT_FIELD_ALIASES) {
   const mappingCounts = {};
+  const targetCounts = {};
   const items = rawItems.map(item => {
     if (!item || typeof item !== 'object' || Array.isArray(item)) return item;
     const mapped = { ...item };
@@ -448,13 +449,14 @@ function mapImportItemFields(rawItems, importAliases = IMPORT_FIELD_ALIASES) {
       mapped[targetField] = mapped[alias];
       const mappingKey = `${alias} -> ${targetField}`;
       mappingCounts[mappingKey] = (mappingCounts[mappingKey] || 0) + 1;
+      targetCounts[targetField] = (targetCounts[targetField] || 0) + 1;
     }
     return mapped;
   });
   const mappings = Object.entries(mappingCounts)
     .sort((a, b) => b[1] - a[1])
     .map(([mapping, count]) => ({ mapping, count }));
-  return { items, mappings };
+  return { items, mappings, targetCounts };
 }
 
 function normalizeStatePayload(data, importAliases = IMPORT_FIELD_ALIASES) {
@@ -481,7 +483,7 @@ function normalizeStatePayload(data, importAliases = IMPORT_FIELD_ALIASES) {
 
   const mappedImport = mapImportItemFields(importedItems, importAliases);
   importedItems = mappedImport.items;
-  const validation = validateImportDryRun(data, importedItems, importedSprint);
+  const validation = validateImportDryRun(data, importedItems, importedSprint, mappedImport);
   warnings.push(...validation.warnings);
 
   return {
@@ -495,7 +497,7 @@ function normalizeStatePayload(data, importAliases = IMPORT_FIELD_ALIASES) {
   };
 }
 
-function validateImportDryRun(rawData, rawItems, sprintBoard) {
+function validateImportDryRun(rawData, rawItems, sprintBoard, mappedImport = { mappings: [], targetCounts: {} }) {
   const warnings = [];
   const errors = [];
   const duplicateIds = new Set();
@@ -506,6 +508,8 @@ function validateImportDryRun(rawData, rawItems, sprintBoard) {
   let unknownColumnCount = 0;
   let unknownTierCount = 0;
   let missingRequiredCount = 0;
+  const unknownColumns = new Set();
+  const unknownTiers = new Set();
 
   rawItems.forEach((item, index) => {
     const id = String(item?.id || '').trim();
@@ -520,8 +524,14 @@ function validateImportDryRun(rawData, rawItems, sprintBoard) {
       if (seenPaths.has(path.toLowerCase())) duplicatePaths.add(path);
       seenPaths.add(path.toLowerCase());
     }
-    if (item?.column && !COLUMNS.includes(item.column)) unknownColumnCount += 1;
-    if (item?.releaseTier && !RELEASE_TIERS.some(tier => tier.id === item.releaseTier)) unknownTierCount += 1;
+    if (item?.column && !COLUMNS.includes(item.column)) {
+      unknownColumnCount += 1;
+      unknownColumns.add(String(item.column));
+    }
+    if (item?.releaseTier && !RELEASE_TIERS.some(tier => tier.id === item.releaseTier)) {
+      unknownTierCount += 1;
+      unknownTiers.add(String(item.releaseTier));
+    }
     Object.keys(item || {}).forEach(key => {
       if (!KNOWN_ITEM_FIELDS.includes(key)) unknownFieldCount += 1;
     });
@@ -531,8 +541,15 @@ function validateImportDryRun(rawData, rawItems, sprintBoard) {
   if (missingRequiredCount) errors.push(`${missingRequiredCount} item(s) are missing a path or title.`);
   if (duplicateIds.size) warnings.push(`Duplicate ids found: ${Array.from(duplicateIds).slice(0, 5).join(', ')}.`);
   if (duplicatePaths.size) warnings.push(`Duplicate visible paths found: ${Array.from(duplicatePaths).slice(0, 5).join(', ')}.`);
-  if (unknownColumnCount) warnings.push(`${unknownColumnCount} item(s) use unknown columns and may need review after import.`);
-  if (unknownTierCount) warnings.push(`${unknownTierCount} item(s) use unknown release tiers and will fall back on save.`);
+  if (mappedImport.mappings?.length) warnings.push(`Field mapping applied before validation: ${mappedImport.mappings.slice(0, 4).map(entry => `${entry.mapping} (${entry.count})`).join(', ')}.`);
+  if (unknownColumnCount) {
+    const hint = mappedImport.targetCounts?.column ? ' These values may have come from a mapped status/state field.' : '';
+    warnings.push(`${unknownColumnCount} item(s) use unknown columns (${Array.from(unknownColumns).slice(0, 5).join(', ')}). Expected: ${COLUMNS.join(', ')}.${hint}`);
+  }
+  if (unknownTierCount) {
+    const hint = mappedImport.targetCounts?.releaseTier ? ' These values may have come from a mapped release/tier field.' : '';
+    warnings.push(`${unknownTierCount} item(s) use unknown release tiers (${Array.from(unknownTiers).slice(0, 5).join(', ')}). Expected: ${RELEASE_TIERS.map(tier => tier.id).join(', ')}.${hint}`);
+  }
   if (unknownFieldCount) warnings.push(`${unknownFieldCount} custom item field(s) are not shown by this version.`);
   if (rawData && typeof rawData === 'object' && !Array.isArray(rawData)) {
     const knownTopLevel = ['app', 'schemaVersion', 'version', 'exportedAt', 'items', 'sprintBoard'];
@@ -756,6 +773,8 @@ export default function App() {
   const [projectMapFilters, setProjectMapFilters] = useState({ domain: 'All', owner: 'All', roadmapStage: 'All' });
   const [selectedProjectMapPresetId, setSelectedProjectMapPresetId] = useState('');
   const [projectMapPresetName, setProjectMapPresetName] = useState('');
+  const [editingProjectMapPresetId, setEditingProjectMapPresetId] = useState('');
+  const [editingProjectMapPresetLabel, setEditingProjectMapPresetLabel] = useState('');
   // Set of "column:tier" strings indicating collapsed sections
   const [collapsedSections, setCollapsedSections] = useState(() => new Set());
 
@@ -1177,6 +1196,10 @@ export default function App() {
     const nextPresets = projectMapPresets.filter(preset => preset.id !== presetId);
     persistProjectMapPresets(nextPresets);
     if (selectedProjectMapPresetId === presetId) setSelectedProjectMapPresetId('');
+    if (editingProjectMapPresetId === presetId) {
+      setEditingProjectMapPresetId('');
+      setEditingProjectMapPresetLabel('');
+    }
   }
 
   function moveProjectMapPreset(presetId, direction) {
@@ -1187,6 +1210,19 @@ export default function App() {
     const [preset] = nextPresets.splice(index, 1);
     nextPresets.splice(nextIndex, 0, preset);
     persistProjectMapPresets(nextPresets);
+  }
+
+  function startRenameProjectMapPreset(preset) {
+    setEditingProjectMapPresetId(preset.id);
+    setEditingProjectMapPresetLabel(preset.label);
+  }
+
+  function renameProjectMapPreset() {
+    const label = editingProjectMapPresetLabel.trim();
+    if (!editingProjectMapPresetId || !label) return;
+    persistProjectMapPresets(projectMapPresets.map(preset => preset.id === editingProjectMapPresetId ? { ...preset, label } : preset));
+    setEditingProjectMapPresetId('');
+    setEditingProjectMapPresetLabel('');
   }
 
   function saveCommandShortcut(nextShortcut) {
@@ -1474,7 +1510,15 @@ export default function App() {
 
   function exportPresetSummary(kind) {
     const title = appConfig.projectName || 'Agent Board';
-    let md = `**${title} ${kind === 'risks' ? 'Risk Review' : kind === 'decisions' ? 'Decision Log' : 'Roadmap Summary'}** - ${new Date().toLocaleString()}\n\n`;
+    const presetTitles = {
+      risks: 'Risk Review',
+      decisions: 'Decision Log',
+      roadmap: 'Roadmap Summary',
+      stakeholder: 'Stakeholder Summary',
+      weekly: 'Weekly Update',
+      release: 'Release Review',
+    };
+    let md = `**${title} ${presetTitles[kind] || 'Summary'}** - ${new Date().toLocaleString()}\n\n`;
     if (kind === 'risks') {
       const risks = riskItems.filter(item => item.column !== 'Done');
       md += `**Open risks (${risks.length}):**\n`;
@@ -1498,6 +1542,48 @@ export default function App() {
       md += `\n**All decision items (${decisionItems.length}):**\n`;
       if (decisionItems.length === 0) md += `_(none)_\n`;
       decisionItems.forEach(item => { md += `- ${workstreamLabel} ${item.path} - ${item.title} [${item.decisionStatus}] status: ${item.column}\n`; });
+      return md;
+    }
+    if (kind === 'stakeholder') {
+      md += `**Snapshot:** ${items.length} total - Doing ${columnCounts['Doing'].total} - Blocked ${columnCounts['Blocked'].total} - Done ${columnCounts['Done'].total}\n\n`;
+      md += `**Current focus:**\n`;
+      const focusItems = [...items.filter(item => item.column === 'Doing'), ...nextUpItems].slice(0, 8);
+      if (focusItems.length === 0) md += `_(none)_\n`;
+      focusItems.forEach(item => { md += `- ${workstreamLabel} ${item.path} - ${item.title} [${item.column}] owner: ${item.owner || 'Unassigned'}\n`; });
+      md += `\n**Risks and decisions:**\n`;
+      md += `- Open risks: ${openRiskItems.length}\n`;
+      md += `- Pending decisions: ${pendingDecisionItems.length}\n`;
+      md += `- Dependency blockers: ${dependencyTrace.blocked.length}\n`;
+      return md;
+    }
+    if (kind === 'weekly') {
+      const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+      const recentlyDone = items.filter(item => item.column === 'Done' && new Date(item.updatedAt).getTime() > sevenDaysAgo).sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+      md += `**This week done (${recentlyDone.length}):**\n`;
+      if (recentlyDone.length === 0) md += `_(none)_\n`;
+      recentlyDone.forEach(item => { md += `- ${workstreamLabel} ${item.path} - ${item.title}\n`; });
+      md += `\n**In progress (${columnCounts['Doing'].total + columnCounts['In Review'].total}):**\n`;
+      items.filter(item => ['Doing', 'In Review'].includes(item.column)).forEach(item => { md += `- ${workstreamLabel} ${item.path} - ${item.title} [${item.column}]\n`; });
+      md += `\n**Next up:**\n`;
+      if (nextUpItems.length === 0) md += `_(none)_\n`;
+      nextUpItems.forEach(item => { md += `- ${workstreamLabel} ${item.path} - ${item.title} [${item.severity}/${item.size}]\n`; });
+      return md;
+    }
+    if (kind === 'release') {
+      RELEASE_TIERS.forEach(tier => {
+        const tierItems = items.filter(item => item.releaseTier === tier.id);
+        md += `**${tier.label} (${tierItems.length}):**\n`;
+        if (tierItems.length === 0) md += `_(none)_\n`;
+        COLUMNS.forEach(column => {
+          const columnItems = tierItems.filter(item => item.column === column);
+          if (columnItems.length) md += `- ${column}: ${columnItems.map(item => `${workstreamLabel} ${item.path}`).join(', ')}\n`;
+        });
+        md += `\n`;
+      });
+      md += `**Release blockers:**\n`;
+      const blockers = uniqueItems([...blockedItems, ...dependencyTrace.blocked.map(edge => edge.item), ...openRiskItems.filter(item => ['High', 'Critical'].includes(item.riskLevel))]);
+      if (blockers.length === 0) md += `_(none)_\n`;
+      blockers.forEach(item => { md += `- ${workstreamLabel} ${item.path} - ${item.title} [${item.column}/${item.riskLevel || 'No risk'}]\n`; });
       return md;
     }
     ROADMAP_STAGES.forEach(stage => {
@@ -1564,6 +1650,9 @@ export default function App() {
     { id: 'risks', label: 'Risks', detail: 'Risk review' },
     { id: 'decisions', label: 'Decisions', detail: 'Decision log' },
     { id: 'roadmap', label: 'Roadmap', detail: 'Roadmap summary' },
+    { id: 'stakeholder', label: 'Stakeholder', detail: 'Exec summary' },
+    { id: 'weekly', label: 'Weekly', detail: 'Progress update' },
+    { id: 'release', label: 'Release', detail: 'Release review' },
   ];
 
   return (
@@ -1744,7 +1833,17 @@ export default function App() {
                     <button onClick={saveProjectMapPreset} disabled={!projectMapFiltersActive} className={`px-2 py-1 rounded border text-[10px] ${projectMapFiltersActive ? 'bg-blue-950/40 hover:bg-blue-900/50 border-blue-800/50 text-blue-200' : 'bg-slate-950 border-slate-900 text-slate-600 cursor-not-allowed'}`}>Save view</button>
                     {projectMapPresets.map((preset, index) => (
                       <span key={preset.id} className={`inline-flex items-center gap-1 rounded border ${selectedProjectMapPresetId === preset.id ? 'bg-blue-900/40 border-blue-600 text-blue-100' : 'bg-slate-950/50 border-slate-800 text-slate-300'}`}>
-                        <button onClick={() => applyProjectMapPreset(preset.id)} className="px-1.5 py-0.5 text-[10px] max-w-[180px] truncate">{preset.label}</button>
+                        {editingProjectMapPresetId === preset.id ? (
+                          <>
+                            <input value={editingProjectMapPresetLabel} onChange={e => setEditingProjectMapPresetLabel(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') renameProjectMapPreset(); if (e.key === 'Escape') setEditingProjectMapPresetId(''); }} className="w-28 bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-[10px]" autoFocus />
+                            <button onClick={renameProjectMapPreset} className="text-[9px] text-blue-300 hover:text-blue-100">Save</button>
+                          </>
+                        ) : (
+                          <>
+                            <button onClick={() => applyProjectMapPreset(preset.id)} className="px-1.5 py-0.5 text-[10px] max-w-[180px] truncate">{preset.label}</button>
+                            <button onClick={() => startRenameProjectMapPreset(preset)} className="text-[9px] text-slate-500 hover:text-blue-300">Rename</button>
+                          </>
+                        )}
                         <button onClick={() => moveProjectMapPreset(preset.id, -1)} disabled={index === 0} className={`text-[9px] ${index === 0 ? 'text-slate-700 cursor-not-allowed' : 'text-slate-500 hover:text-blue-300'}`} aria-label={`Move map view ${preset.label} up`}>Up</button>
                         <button onClick={() => moveProjectMapPreset(preset.id, 1)} disabled={index === projectMapPresets.length - 1} className={`text-[9px] ${index === projectMapPresets.length - 1 ? 'text-slate-700 cursor-not-allowed' : 'text-slate-500 hover:text-blue-300'}`} aria-label={`Move map view ${preset.label} down`}>Down</button>
                         <button onClick={() => deleteProjectMapPreset(preset.id)} className="pr-1 text-slate-500 hover:text-red-300" aria-label={`Delete map view ${preset.label}`}><X size={10} /></button>
