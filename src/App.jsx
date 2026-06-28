@@ -60,6 +60,67 @@ const IMPORT_FIELD_ALIASES = {
   decisionStatus: ['decision', 'decision_status'],
   owner: ['assignee', 'responsible', 'lead'],
 };
+const IMPORT_ALIAS_PRESETS = [
+  {
+    id: 'default',
+    label: 'Default',
+    aliases: IMPORT_FIELD_ALIASES,
+  },
+  {
+    id: 'github',
+    label: 'GitHub Issues',
+    aliases: {
+      title: ['title', 'name'],
+      description: ['body', 'description'],
+      column: ['state', 'status'],
+      severity: ['priority', 'severity'],
+      domain: ['labels', 'area'],
+      owner: ['assignee', 'assignees'],
+      dependencies: ['blockedBy', 'blocked_by', 'dependsOn'],
+      riskLevel: ['risk'],
+      decisionStatus: ['decision'],
+      roadmapStage: ['milestone'],
+    },
+  },
+  {
+    id: 'jira',
+    label: 'Jira',
+    aliases: {
+      path: ['key', 'issueKey'],
+      title: ['summary'],
+      description: ['description'],
+      column: ['status', 'statusCategory'],
+      severity: ['priority'],
+      size: ['storyPoints', 'estimate'],
+      releaseTier: ['fixVersion', 'version'],
+      candidateRound: ['sprint', 'fixVersion'],
+      domain: ['project', 'component', 'components'],
+      owner: ['assignee', 'reporter'],
+      dependencies: ['issuelinks', 'blocks', 'dependsOn'],
+      riskLevel: ['risk'],
+      decisionStatus: ['decision'],
+    },
+  },
+  {
+    id: 'linear',
+    label: 'Linear',
+    aliases: {
+      path: ['identifier', 'number'],
+      title: ['title'],
+      description: ['description'],
+      column: ['state', 'status'],
+      severity: ['priority'],
+      size: ['estimate'],
+      candidateRound: ['cycle', 'milestone'],
+      domain: ['team', 'project'],
+      owner: ['assignee', 'creator'],
+      dependencies: ['relations', 'blockedBy', 'dependsOn'],
+      riskLevel: ['risk'],
+      decisionStatus: ['decision'],
+      roadmapStage: ['roadmap'],
+    },
+  },
+];
 
 const DOMAIN_COLORS = {
   Delivery: 'bg-blue-900/40 text-blue-300 border-blue-700/40',
@@ -550,6 +611,10 @@ function loadJsonLocalStorage(key, fallback) {
   }
 }
 
+function safeFilenamePart(value) {
+  return String(value || 'export').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'export';
+}
+
 function getShortcutLabel(id) {
   return COMMAND_SHORTCUTS.find(shortcut => shortcut.id === id)?.label || COMMAND_SHORTCUTS[0].label;
 }
@@ -690,6 +755,7 @@ export default function App() {
   const [focusedItemId, setFocusedItemId] = useState(null);
   const [projectMapFilters, setProjectMapFilters] = useState({ domain: 'All', owner: 'All', roadmapStage: 'All' });
   const [selectedProjectMapPresetId, setSelectedProjectMapPresetId] = useState('');
+  const [projectMapPresetName, setProjectMapPresetName] = useState('');
   // Set of "column:tier" strings indicating collapsed sections
   const [collapsedSections, setCollapsedSections] = useState(() => new Set());
 
@@ -1093,10 +1159,12 @@ export default function App() {
   }
 
   function saveProjectMapPreset() {
-    const preset = { id: uid(), label: projectMapPresetLabel(projectMapFilters), filters: { ...projectMapFilters } };
+    const label = projectMapPresetName.trim() || projectMapPresetLabel(projectMapFilters);
+    const preset = { id: uid(), label, filters: { ...projectMapFilters } };
     const nextPresets = [preset, ...projectMapPresets.filter(existing => existing.label !== preset.label)].slice(0, 8);
     persistProjectMapPresets(nextPresets);
     setSelectedProjectMapPresetId(preset.id);
+    setProjectMapPresetName('');
   }
 
   function applyProjectMapPreset(presetId) {
@@ -1109,6 +1177,16 @@ export default function App() {
     const nextPresets = projectMapPresets.filter(preset => preset.id !== presetId);
     persistProjectMapPresets(nextPresets);
     if (selectedProjectMapPresetId === presetId) setSelectedProjectMapPresetId('');
+  }
+
+  function moveProjectMapPreset(presetId, direction) {
+    const index = projectMapPresets.findIndex(preset => preset.id === presetId);
+    const nextIndex = index + direction;
+    if (index < 0 || nextIndex < 0 || nextIndex >= projectMapPresets.length) return;
+    const nextPresets = [...projectMapPresets];
+    const [preset] = nextPresets.splice(index, 1);
+    nextPresets.splice(nextIndex, 0, preset);
+    persistProjectMapPresets(nextPresets);
   }
 
   function saveCommandShortcut(nextShortcut) {
@@ -1270,6 +1348,16 @@ export default function App() {
     const a = document.createElement('a');
     a.href = url;
     a.download = `agent_board_${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function downloadMarkdownExport() {
+    const blob = new Blob([exportPresetText], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `agent_board_${safeFilenamePart(exportPreset)}_${new Date().toISOString().split('T')[0]}.md`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -1652,10 +1740,13 @@ export default function App() {
                     <button onClick={() => { setProjectMapFilters({ domain: 'All', owner: 'All', roadmapStage: 'All' }); setSelectedProjectMapPresetId(''); }} disabled={!projectMapFiltersActive} className={`px-2 py-1 rounded text-[10px] border ${projectMapFiltersActive ? 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200' : 'bg-slate-950 border-slate-900 text-slate-600 cursor-not-allowed'}`}>Clear map filters</button>
                   </div>
                   <div className="flex flex-wrap gap-1.5 items-center">
-                    <button onClick={saveProjectMapPreset} disabled={!projectMapFiltersActive} className={`px-2 py-1 rounded border text-[10px] ${projectMapFiltersActive ? 'bg-blue-950/40 hover:bg-blue-900/50 border-blue-800/50 text-blue-200' : 'bg-slate-950 border-slate-900 text-slate-600 cursor-not-allowed'}`}>Save map view</button>
-                    {projectMapPresets.map(preset => (
+                    <input value={projectMapPresetName} onChange={e => setProjectMapPresetName(e.target.value)} placeholder="Preset name" className="min-w-[120px] flex-1 bg-slate-950 border border-slate-800 rounded px-2 py-1 text-[10px] text-slate-300 placeholder-slate-600" />
+                    <button onClick={saveProjectMapPreset} disabled={!projectMapFiltersActive} className={`px-2 py-1 rounded border text-[10px] ${projectMapFiltersActive ? 'bg-blue-950/40 hover:bg-blue-900/50 border-blue-800/50 text-blue-200' : 'bg-slate-950 border-slate-900 text-slate-600 cursor-not-allowed'}`}>Save view</button>
+                    {projectMapPresets.map((preset, index) => (
                       <span key={preset.id} className={`inline-flex items-center gap-1 rounded border ${selectedProjectMapPresetId === preset.id ? 'bg-blue-900/40 border-blue-600 text-blue-100' : 'bg-slate-950/50 border-slate-800 text-slate-300'}`}>
                         <button onClick={() => applyProjectMapPreset(preset.id)} className="px-1.5 py-0.5 text-[10px] max-w-[180px] truncate">{preset.label}</button>
+                        <button onClick={() => moveProjectMapPreset(preset.id, -1)} disabled={index === 0} className={`text-[9px] ${index === 0 ? 'text-slate-700 cursor-not-allowed' : 'text-slate-500 hover:text-blue-300'}`} aria-label={`Move map view ${preset.label} up`}>Up</button>
+                        <button onClick={() => moveProjectMapPreset(preset.id, 1)} disabled={index === projectMapPresets.length - 1} className={`text-[9px] ${index === projectMapPresets.length - 1 ? 'text-slate-700 cursor-not-allowed' : 'text-slate-500 hover:text-blue-300'}`} aria-label={`Move map view ${preset.label} down`}>Down</button>
                         <button onClick={() => deleteProjectMapPreset(preset.id)} className="pr-1 text-slate-500 hover:text-red-300" aria-label={`Delete map view ${preset.label}`}><X size={10} /></button>
                       </span>
                     ))}
@@ -1989,7 +2080,10 @@ export default function App() {
                       </button>
                     ))}
                   </div>
-                  <div className="flex items-center gap-2 mb-1.5"><button onClick={() => copyToClipboard(exportPresetText)} className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-600 rounded text-xs flex items-center gap-1">{copiedFlag ? <Check size={12} /> : <MessageSquare size={12} />}{copiedFlag ? 'Copied' : 'Copy preset'}</button></div>
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <button onClick={() => copyToClipboard(exportPresetText)} className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-600 rounded text-xs flex items-center gap-1">{copiedFlag ? <Check size={12} /> : <MessageSquare size={12} />}{copiedFlag ? 'Copied' : 'Copy preset'}</button>
+                    <button onClick={downloadMarkdownExport} className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded text-xs flex items-center gap-1"><Download size={12} />Download .md</button>
+                  </div>
                   <textarea value={exportPresetText} readOnly rows={10} className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-[10px] font-mono" />
                 </div>
                 <div>
@@ -2369,6 +2463,9 @@ function SettingsModal({ config, commandShortcut, status, error, onShortcutChang
       importFieldAliases: parseImportAliasesFromSettings(form.importAliasesText),
     });
   }
+  function applyAliasPreset(preset) {
+    setForm({ ...form, importAliasesText: formatImportAliasesForSettings(preset.aliases) });
+  }
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50" role="dialog" aria-modal="true" aria-label="Settings" onClick={onClose}>
       <div ref={modalRef} className="bg-slate-900 border border-slate-700 rounded-lg max-w-2xl w-full max-h-[90vh] flex flex-col p-4" onClick={(e) => e.stopPropagation()}>
@@ -2400,6 +2497,11 @@ function SettingsModal({ config, commandShortcut, status, error, onShortcutChang
           </div>
           <div>
             <label className="block text-slate-500 mb-1">Import field aliases</label>
+            <div className="flex flex-wrap gap-1.5 mb-1.5">
+              {IMPORT_ALIAS_PRESETS.map(preset => (
+                <button key={preset.id} onClick={() => applyAliasPreset(preset)} className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[10px] text-slate-300">{preset.label}</button>
+              ))}
+            </div>
             <textarea value={form.importAliasesText} onChange={e => setForm({ ...form, importAliasesText: e.target.value })} rows={6} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 font-mono text-[11px]" />
             <div className="text-[10px] text-slate-500 mt-1">Saved in local config.json.</div>
           </div>

@@ -4,6 +4,19 @@ All notable changes to Agent Board will be documented in this file.
 
 The format is based on Keep a Changelog, and this project uses simple `0.x` versions while the tool is early.
 
+## [0.11.0] - 2026-06-28
+
+### Added
+
+- Named Project Map filter presets with local reorder controls
+- Downloadable `.md` files for markdown export presets
+- Import alias presets for Default, GitHub Issues, Jira, and Linear schemas
+
+### Changed
+
+- Project Map saved views can now be named before saving
+- Export preset workflow now supports both clipboard copy and markdown file download
+
 ## [0.10.0] - 2026-06-28
 
 ### Added

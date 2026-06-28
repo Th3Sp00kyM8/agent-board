@@ -274,6 +274,9 @@ function verifyReleaseAssets() {
   expect(readme.includes('markdown export presets'), 'README should document markdown export presets.');
   expect(readme.includes('save common map views'), 'README should document saved Project Map views.');
   expect(readme.includes('import field aliases'), 'README should document configurable import aliases.');
+  expect(readme.includes('downloaded as a `.md` file'), 'README should document markdown download support.');
+  expect(readme.includes('GitHub Issues, Jira, and Linear'), 'README should document import alias presets.');
+  expect(readme.includes('reordered or deleted'), 'README should document saved map view ordering.');
   expect(readme.includes('Focus Dashboard'), 'README should document the Focus Dashboard feature.');
   expect(readme.includes('Project Map'), 'README should document the Project Map feature.');
   expect(readme.includes('schemaVersion'), 'README should document board schema metadata.');
