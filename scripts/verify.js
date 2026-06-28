@@ -276,9 +276,12 @@ function verifyReleaseAssets() {
   expect(readme.includes('import field aliases'), 'README should document configurable import aliases.');
   expect(readme.includes('downloaded as a `.md` file'), 'README should document markdown download support.');
   expect(readme.includes('GitHub Issues, Jira, and Linear'), 'README should document import alias presets.');
-  expect(readme.includes('renamed, reordered, or deleted'), 'README should document saved map view renaming.');
-  expect(readme.includes('stakeholder summary, weekly update, or release review'), 'README should document expanded export presets.');
+  expect(readme.includes('grouped, renamed, reordered, deleted, copied, or downloaded'), 'README should document saved map view grouping and sharing.');
+  expect(readme.includes('stakeholder summary, weekly update, release review'), 'README should document expanded export presets.');
   expect(readme.includes('warning shows the expected values'), 'README should document alias-mapped validation hints.');
+  expect(readme.includes('support review, audit prep, or planning summary'), 'README should document support, audit, and planning export presets.');
+  expect(readme.includes('grouped, shareable'), 'README should document grouped shareable Project Map presets.');
+  expect(readme.includes('fix suggestions'), 'README should document import remediation suggestions.');
   expect(readme.includes('Focus Dashboard'), 'README should document the Focus Dashboard feature.');
   expect(readme.includes('Project Map'), 'README should document the Project Map feature.');
   expect(readme.includes('schemaVersion'), 'README should document board schema metadata.');

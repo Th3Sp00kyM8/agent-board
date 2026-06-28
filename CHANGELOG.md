@@ -4,6 +4,20 @@ All notable changes to Agent Board will be documented in this file.
 
 The format is based on Keep a Changelog, and this project uses simple `0.x` versions while the tool is early.
 
+## [0.13.0] - 2026-06-28
+
+### Added
+
+- Saved Project Map preset groups for organizing reusable views by focus, review, delivery, or custom workflows
+- Copy and download actions for sharing saved Project Map view bundles
+- Support review, audit prep, and planning summary markdown export presets
+- Import preview fix suggestions for missing required fields, duplicate identifiers, unknown columns, unknown release tiers, and custom fields
+
+### Changed
+
+- Saved Project Map preset editing now includes group assignment
+- Import dry-run review now pairs warnings with practical remediation guidance
+
 ## [0.12.0] - 2026-06-28
 
 ### Added

@@ -8,6 +8,7 @@ const COMMAND_SHORTCUT_KEY = 'agent-board-command-shortcut';
 const COMMAND_RECENTS_KEY = 'agent-board-command-recents';
 const PROJECT_MAP_PRESETS_KEY = 'agent-board-project-map-presets';
 const COLUMNS = ['To Do', 'Doing', 'In Review', 'Blocked', 'Done'];
+const PROJECT_MAP_PRESET_GROUPS = ['Focus', 'Review', 'Delivery', 'Custom'];
 
 const RELEASE_TIERS = [
   { id: 'core_release', label: 'Core Release', color: 'text-blue-300', bgColor: 'bg-blue-900/30', borderColor: 'border-blue-700/40' },
@@ -500,6 +501,7 @@ function normalizeStatePayload(data, importAliases = IMPORT_FIELD_ALIASES) {
 function validateImportDryRun(rawData, rawItems, sprintBoard, mappedImport = { mappings: [], targetCounts: {} }) {
   const warnings = [];
   const errors = [];
+  const remediationTips = [];
   const duplicateIds = new Set();
   const duplicatePaths = new Set();
   const seenIds = new Set();
@@ -538,19 +540,28 @@ function validateImportDryRun(rawData, rawItems, sprintBoard, mappedImport = { m
     if (!item || typeof item !== 'object' || Array.isArray(item)) errors.push(`Item ${index + 1} is not an object.`);
   });
 
-  if (missingRequiredCount) errors.push(`${missingRequiredCount} item(s) are missing a path or title.`);
+  if (missingRequiredCount) {
+    errors.push(`${missingRequiredCount} item(s) are missing a path or title.`);
+    remediationTips.push('Add a visible path and title to every incoming item before importing.');
+  }
   if (duplicateIds.size) warnings.push(`Duplicate ids found: ${Array.from(duplicateIds).slice(0, 5).join(', ')}.`);
   if (duplicatePaths.size) warnings.push(`Duplicate visible paths found: ${Array.from(duplicatePaths).slice(0, 5).join(', ')}.`);
+  if (duplicateIds.size || duplicatePaths.size) remediationTips.push('Rename duplicate ids or visible paths so links, dependencies, and keyboard jumps stay unambiguous.');
   if (mappedImport.mappings?.length) warnings.push(`Field mapping applied before validation: ${mappedImport.mappings.slice(0, 4).map(entry => `${entry.mapping} (${entry.count})`).join(', ')}.`);
   if (unknownColumnCount) {
     const hint = mappedImport.targetCounts?.column ? ' These values may have come from a mapped status/state field.' : '';
     warnings.push(`${unknownColumnCount} item(s) use unknown columns (${Array.from(unknownColumns).slice(0, 5).join(', ')}). Expected: ${COLUMNS.join(', ')}.${hint}`);
+    remediationTips.push(`Convert incoming status values to one of: ${COLUMNS.join(', ')}.`);
   }
   if (unknownTierCount) {
     const hint = mappedImport.targetCounts?.releaseTier ? ' These values may have come from a mapped release/tier field.' : '';
     warnings.push(`${unknownTierCount} item(s) use unknown release tiers (${Array.from(unknownTiers).slice(0, 5).join(', ')}). Expected: ${RELEASE_TIERS.map(tier => tier.id).join(', ')}.${hint}`);
+    remediationTips.push(`Convert incoming release tiers to one of: ${RELEASE_TIERS.map(tier => tier.id).join(', ')}.`);
   }
-  if (unknownFieldCount) warnings.push(`${unknownFieldCount} custom item field(s) are not shown by this version.`);
+  if (unknownFieldCount) {
+    warnings.push(`${unknownFieldCount} custom item field(s) are not shown by this version.`);
+    remediationTips.push('Keep useful custom fields in your fork, or map them to Agent Board fields in Settings before importing.');
+  }
   if (rawData && typeof rawData === 'object' && !Array.isArray(rawData)) {
     const knownTopLevel = ['app', 'schemaVersion', 'version', 'exportedAt', 'items', 'sprintBoard'];
     const customTopLevel = Object.keys(rawData).filter(key => !knownTopLevel.includes(key));
@@ -565,6 +576,7 @@ function validateImportDryRun(rawData, rawItems, sprintBoard, mappedImport = { m
     ok: errors.length === 0,
     errors,
     warnings,
+    remediationTips,
     duplicateIds: duplicateIds.size,
     duplicatePaths: duplicatePaths.size,
     unknownFieldCount,
@@ -773,8 +785,10 @@ export default function App() {
   const [projectMapFilters, setProjectMapFilters] = useState({ domain: 'All', owner: 'All', roadmapStage: 'All' });
   const [selectedProjectMapPresetId, setSelectedProjectMapPresetId] = useState('');
   const [projectMapPresetName, setProjectMapPresetName] = useState('');
+  const [projectMapPresetGroup, setProjectMapPresetGroup] = useState('Focus');
   const [editingProjectMapPresetId, setEditingProjectMapPresetId] = useState('');
   const [editingProjectMapPresetLabel, setEditingProjectMapPresetLabel] = useState('');
+  const [editingProjectMapPresetGroup, setEditingProjectMapPresetGroup] = useState('Focus');
   // Set of "column:tier" strings indicating collapsed sections
   const [collapsedSections, setCollapsedSections] = useState(() => new Set());
 
@@ -1179,7 +1193,7 @@ export default function App() {
 
   function saveProjectMapPreset() {
     const label = projectMapPresetName.trim() || projectMapPresetLabel(projectMapFilters);
-    const preset = { id: uid(), label, filters: { ...projectMapFilters } };
+    const preset = { id: uid(), label, group: projectMapPresetGroup, filters: { ...projectMapFilters } };
     const nextPresets = [preset, ...projectMapPresets.filter(existing => existing.label !== preset.label)].slice(0, 8);
     persistProjectMapPresets(nextPresets);
     setSelectedProjectMapPresetId(preset.id);
@@ -1199,6 +1213,7 @@ export default function App() {
     if (editingProjectMapPresetId === presetId) {
       setEditingProjectMapPresetId('');
       setEditingProjectMapPresetLabel('');
+      setEditingProjectMapPresetGroup('Focus');
     }
   }
 
@@ -1215,14 +1230,43 @@ export default function App() {
   function startRenameProjectMapPreset(preset) {
     setEditingProjectMapPresetId(preset.id);
     setEditingProjectMapPresetLabel(preset.label);
+    setEditingProjectMapPresetGroup(preset.group || 'Focus');
   }
 
   function renameProjectMapPreset() {
     const label = editingProjectMapPresetLabel.trim();
     if (!editingProjectMapPresetId || !label) return;
-    persistProjectMapPresets(projectMapPresets.map(preset => preset.id === editingProjectMapPresetId ? { ...preset, label } : preset));
+    persistProjectMapPresets(projectMapPresets.map(preset => preset.id === editingProjectMapPresetId ? { ...preset, label, group: editingProjectMapPresetGroup } : preset));
     setEditingProjectMapPresetId('');
     setEditingProjectMapPresetLabel('');
+    setEditingProjectMapPresetGroup('Focus');
+  }
+
+  function projectMapPresetsPayload() {
+    return {
+      app: BOARD_APP_ID,
+      type: 'project-map-presets',
+      exportedAt: nowIso(),
+      projectMapPresets: projectMapPresets.map(preset => ({
+        label: preset.label,
+        group: preset.group || 'Focus',
+        filters: { domain: 'All', owner: 'All', roadmapStage: 'All', ...(preset.filters || {}) },
+      })),
+    };
+  }
+
+  function copyProjectMapPresets() {
+    copyToClipboard(JSON.stringify(projectMapPresetsPayload(), null, 2));
+  }
+
+  function downloadProjectMapPresets() {
+    const blob = new Blob([JSON.stringify(projectMapPresetsPayload(), null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `agent_board_map_views_${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   function saveCommandShortcut(nextShortcut) {
@@ -1510,6 +1554,7 @@ export default function App() {
 
   function exportPresetSummary(kind) {
     const title = appConfig.projectName || 'Agent Board';
+    const sevOrder = { 'Critical': 0, 'High': 1, 'Medium': 2, 'Low': 3 };
     const presetTitles = {
       risks: 'Risk Review',
       decisions: 'Decision Log',
@@ -1517,6 +1562,9 @@ export default function App() {
       stakeholder: 'Stakeholder Summary',
       weekly: 'Weekly Update',
       release: 'Release Review',
+      support: 'Support Review',
+      audit: 'Audit Prep',
+      planning: 'Planning Summary',
     };
     let md = `**${title} ${presetTitles[kind] || 'Summary'}** - ${new Date().toLocaleString()}\n\n`;
     if (kind === 'risks') {
@@ -1586,6 +1634,49 @@ export default function App() {
       blockers.forEach(item => { md += `- ${workstreamLabel} ${item.path} - ${item.title} [${item.column}/${item.riskLevel || 'No risk'}]\n`; });
       return md;
     }
+    if (kind === 'support') {
+      const needsSupport = items.filter(item => item.column === 'Blocked' || item.domain === 'Operations' || item.riskLevel === 'High' || item.riskLevel === 'Critical');
+      md += `**Support queue (${needsSupport.length}):**\n`;
+      if (needsSupport.length === 0) md += `_(none)_\n`;
+      needsSupport.forEach(item => {
+        md += `- ${workstreamLabel} ${item.path} - ${item.title} [${item.column}] owner: ${item.owner || 'Unassigned'}\n`;
+        if (item.notes) md += `  - Need: ${item.notes}\n`;
+      });
+      md += `\n**Dependency misses (${dependencyTrace.missing.length}):**\n`;
+      if (dependencyTrace.missing.length === 0) md += `_(none)_\n`;
+      dependencyTrace.missing.forEach(edge => { md += `- ${workstreamLabel} ${edge.item.path} references missing dependency "${edge.dependency}"\n`; });
+      return md;
+    }
+    if (kind === 'audit') {
+      md += `**Data checks:**\n`;
+      md += `- Items without owners: ${items.filter(item => !item.owner).length}\n`;
+      md += `- Items without domains: ${items.filter(item => !item.domain).length}\n`;
+      md += `- Missing dependency links: ${dependencyTrace.missing.length}\n`;
+      md += `- Open high/critical risks: ${openRiskItems.filter(item => ['High', 'Critical'].includes(item.riskLevel)).length}\n`;
+      md += `- Pending decisions: ${pendingDecisionItems.length}\n\n`;
+      md += `**Review sample:**\n`;
+      items.filter(item => !item.owner || !item.domain || item.column === 'Blocked').slice(0, 10).forEach(item => {
+        md += `- ${workstreamLabel} ${item.path} - ${item.title} [owner: ${item.owner || 'missing'}, domain: ${item.domain || 'missing'}, status: ${item.column}]\n`;
+      });
+      return md;
+    }
+    if (kind === 'planning') {
+      md += `**Capacity by stage:**\n`;
+      ROADMAP_STAGES.forEach(stage => {
+        md += `- ${stage}: ${(roadmapCounts[stage] || 0)}\n`;
+      });
+      md += `\n**Next planning candidates:**\n`;
+      const planningCandidates = items
+        .filter(item => item.column !== 'Done' && ['Now', 'Next', 'Backlog'].includes(item.roadmapStage))
+        .sort((a, b) => (ROADMAP_STAGES.indexOf(a.roadmapStage) - ROADMAP_STAGES.indexOf(b.roadmapStage)) || ((sevOrder[a.severity] || 99) - (sevOrder[b.severity] || 99)))
+        .slice(0, 12);
+      if (planningCandidates.length === 0) md += `_(none)_\n`;
+      planningCandidates.forEach(item => { md += `- ${workstreamLabel} ${item.path} - ${item.title} [${item.roadmapStage}/${item.severity}/${item.size}] owner: ${item.owner || 'Unassigned'}\n`; });
+      md += `\n**Decision follow-up:**\n`;
+      if (pendingDecisionItems.length === 0) md += `_(none)_\n`;
+      pendingDecisionItems.slice(0, 8).forEach(item => { md += `- ${workstreamLabel} ${item.path} - ${item.title} [${item.decisionStatus}]\n`; });
+      return md;
+    }
     ROADMAP_STAGES.forEach(stage => {
       const stageItems = roadmapItems.filter(item => item.roadmapStage === stage);
       md += `**${stage} (${stageItems.length}):**\n`;
@@ -1653,7 +1744,14 @@ export default function App() {
     { id: 'stakeholder', label: 'Stakeholder', detail: 'Exec summary' },
     { id: 'weekly', label: 'Weekly', detail: 'Progress update' },
     { id: 'release', label: 'Release', detail: 'Release review' },
+    { id: 'support', label: 'Support', detail: 'Support review' },
+    { id: 'audit', label: 'Audit', detail: 'Audit prep' },
+    { id: 'planning', label: 'Planning', detail: 'Planning summary' },
   ];
+  const groupedProjectMapPresets = PROJECT_MAP_PRESET_GROUPS.map(group => ({
+    group,
+    presets: projectMapPresets.filter(preset => (preset.group || 'Focus') === group),
+  })).filter(entry => entry.presets.length > 0);
 
   return (
     <div className="h-screen bg-slate-950 text-slate-100 flex flex-col overflow-hidden">
@@ -1830,25 +1928,44 @@ export default function App() {
                   </div>
                   <div className="flex flex-wrap gap-1.5 items-center">
                     <input value={projectMapPresetName} onChange={e => setProjectMapPresetName(e.target.value)} placeholder="Preset name" className="min-w-[120px] flex-1 bg-slate-950 border border-slate-800 rounded px-2 py-1 text-[10px] text-slate-300 placeholder-slate-600" />
+                    <select aria-label="Project map preset group" value={projectMapPresetGroup} onChange={e => setProjectMapPresetGroup(e.target.value)} className="bg-slate-950 border border-slate-800 rounded px-2 py-1 text-[10px] text-slate-300">
+                      {PROJECT_MAP_PRESET_GROUPS.map(group => <option key={group}>{group}</option>)}
+                    </select>
                     <button onClick={saveProjectMapPreset} disabled={!projectMapFiltersActive} className={`px-2 py-1 rounded border text-[10px] ${projectMapFiltersActive ? 'bg-blue-950/40 hover:bg-blue-900/50 border-blue-800/50 text-blue-200' : 'bg-slate-950 border-slate-900 text-slate-600 cursor-not-allowed'}`}>Save view</button>
-                    {projectMapPresets.map((preset, index) => (
-                      <span key={preset.id} className={`inline-flex items-center gap-1 rounded border ${selectedProjectMapPresetId === preset.id ? 'bg-blue-900/40 border-blue-600 text-blue-100' : 'bg-slate-950/50 border-slate-800 text-slate-300'}`}>
-                        {editingProjectMapPresetId === preset.id ? (
-                          <>
-                            <input value={editingProjectMapPresetLabel} onChange={e => setEditingProjectMapPresetLabel(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') renameProjectMapPreset(); if (e.key === 'Escape') setEditingProjectMapPresetId(''); }} className="w-28 bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-[10px]" autoFocus />
-                            <button onClick={renameProjectMapPreset} className="text-[9px] text-blue-300 hover:text-blue-100">Save</button>
-                          </>
-                        ) : (
-                          <>
-                            <button onClick={() => applyProjectMapPreset(preset.id)} className="px-1.5 py-0.5 text-[10px] max-w-[180px] truncate">{preset.label}</button>
-                            <button onClick={() => startRenameProjectMapPreset(preset)} className="text-[9px] text-slate-500 hover:text-blue-300">Rename</button>
-                          </>
-                        )}
-                        <button onClick={() => moveProjectMapPreset(preset.id, -1)} disabled={index === 0} className={`text-[9px] ${index === 0 ? 'text-slate-700 cursor-not-allowed' : 'text-slate-500 hover:text-blue-300'}`} aria-label={`Move map view ${preset.label} up`}>Up</button>
-                        <button onClick={() => moveProjectMapPreset(preset.id, 1)} disabled={index === projectMapPresets.length - 1} className={`text-[9px] ${index === projectMapPresets.length - 1 ? 'text-slate-700 cursor-not-allowed' : 'text-slate-500 hover:text-blue-300'}`} aria-label={`Move map view ${preset.label} down`}>Down</button>
-                        <button onClick={() => deleteProjectMapPreset(preset.id)} className="pr-1 text-slate-500 hover:text-red-300" aria-label={`Delete map view ${preset.label}`}><X size={10} /></button>
-                      </span>
+                    <button onClick={copyProjectMapPresets} disabled={projectMapPresets.length === 0} className={`px-2 py-1 rounded border text-[10px] ${projectMapPresets.length ? 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200' : 'bg-slate-950 border-slate-900 text-slate-600 cursor-not-allowed'}`}>Copy views</button>
+                    <button onClick={downloadProjectMapPresets} disabled={projectMapPresets.length === 0} className={`px-2 py-1 rounded border text-[10px] ${projectMapPresets.length ? 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200' : 'bg-slate-950 border-slate-900 text-slate-600 cursor-not-allowed'}`}>Download views</button>
+                  </div>
+                  <div className="space-y-1.5">
+                    {groupedProjectMapPresets.map(({ group, presets }) => (
+                      <div key={group} className="flex flex-wrap gap-1.5 items-center">
+                        <span className="text-[9px] uppercase tracking-wider text-slate-500 w-14">{group}</span>
+                        {presets.map((preset) => {
+                          const index = projectMapPresets.findIndex(item => item.id === preset.id);
+                          return (
+                            <span key={preset.id} className={`inline-flex items-center gap-1 rounded border ${selectedProjectMapPresetId === preset.id ? 'bg-blue-900/40 border-blue-600 text-blue-100' : 'bg-slate-950/50 border-slate-800 text-slate-300'}`}>
+                              {editingProjectMapPresetId === preset.id ? (
+                                <>
+                                  <input value={editingProjectMapPresetLabel} onChange={e => setEditingProjectMapPresetLabel(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') renameProjectMapPreset(); if (e.key === 'Escape') setEditingProjectMapPresetId(''); }} className="w-28 bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-[10px]" autoFocus />
+                                  <select aria-label={`Group for map view ${preset.label}`} value={editingProjectMapPresetGroup} onChange={e => setEditingProjectMapPresetGroup(e.target.value)} className="bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-[10px]">
+                                    {PROJECT_MAP_PRESET_GROUPS.map(option => <option key={option}>{option}</option>)}
+                                  </select>
+                                  <button onClick={renameProjectMapPreset} className="text-[9px] text-blue-300 hover:text-blue-100">Save</button>
+                                </>
+                              ) : (
+                                <>
+                                  <button onClick={() => applyProjectMapPreset(preset.id)} className="px-1.5 py-0.5 text-[10px] max-w-[180px] truncate">{preset.label}</button>
+                                  <button onClick={() => startRenameProjectMapPreset(preset)} className="text-[9px] text-slate-500 hover:text-blue-300">Edit</button>
+                                </>
+                              )}
+                              <button onClick={() => moveProjectMapPreset(preset.id, -1)} disabled={index === 0} className={`text-[9px] ${index === 0 ? 'text-slate-700 cursor-not-allowed' : 'text-slate-500 hover:text-blue-300'}`} aria-label={`Move map view ${preset.label} up`}>Up</button>
+                              <button onClick={() => moveProjectMapPreset(preset.id, 1)} disabled={index === projectMapPresets.length - 1} className={`text-[9px] ${index === projectMapPresets.length - 1 ? 'text-slate-700 cursor-not-allowed' : 'text-slate-500 hover:text-blue-300'}`} aria-label={`Move map view ${preset.label} down`}>Down</button>
+                              <button onClick={() => deleteProjectMapPreset(preset.id)} className="pr-1 text-slate-500 hover:text-red-300" aria-label={`Delete map view ${preset.label}`}><X size={10} /></button>
+                            </span>
+                          );
+                        })}
+                      </div>
                     ))}
+                    {projectMapPresets.length === 0 && <div className="text-[10px] text-slate-500 italic">Save a filtered map view to reuse or share it.</div>}
                   </div>
                   <div className="grid grid-cols-3 gap-1 text-center">
                     <div className="bg-slate-950/50 border border-slate-800 rounded p-2"><div className="text-base text-slate-100 font-bold">{projectMapTrace.edges.length}</div><div className="text-[9px] text-slate-500">dependencies</div></div>
@@ -2214,7 +2331,7 @@ function ImportConfirmModal({ imported, currentItems, onCancel, onConfirm }) {
   const current = summarizeItemsForImport(currentItems);
   const incoming = summarizeItemsForImport(imported.items);
   const previewItems = imported.items.slice(0, 5);
-  const validation = imported.validation || { ok: true, errors: [], warnings: [] };
+  const validation = imported.validation || { ok: true, errors: [], warnings: [], remediationTips: [] };
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50" role="dialog" aria-modal="true" aria-label="Preview import replacement" onClick={onCancel}>
       <div ref={modalRef} className="bg-slate-900 border border-amber-700 rounded-lg max-w-3xl w-full max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
@@ -2253,6 +2370,12 @@ function ImportConfirmModal({ imported, currentItems, onCancel, onConfirm }) {
           {imported.warnings?.length > 0 && (
             <div className="text-[11px] text-amber-300 bg-amber-950/30 border border-amber-900/50 rounded p-2 space-y-1">
               {imported.warnings.map(w => <div key={w}>- {w}</div>)}
+            </div>
+          )}
+          {validation.remediationTips?.length > 0 && (
+            <div className="text-[11px] text-cyan-200 bg-cyan-950/20 border border-cyan-900/50 rounded p-2 space-y-1">
+              <div className="text-[10px] uppercase tracking-wider text-cyan-300">Fix Suggestions</div>
+              {validation.remediationTips.map(tip => <div key={tip}>- {tip}</div>)}
             </div>
           )}
           {imported.mappings?.length > 0 && (
