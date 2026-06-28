@@ -17,10 +17,10 @@ Agent Board is intentionally small and local-first. The goal is to stay easy to 
 
 - More template presets and template customization controls
 - Richer recent-item jump history
-- Friendly custom export preset builder with form fields instead of JSON editing
-- Import preview diff view before board replacement
+- Custom export preset import/export for sharing reporting templates
+- More import preview detail for field-level changes
 - More import alias presets for CSV-like trackers and spreadsheet exports
-- More one-click import repair actions for owners, domains, and roadmap stages
+- Repair preview that shows exactly which values changed before applying fixes
 - More sample board presets for common workflows
 - Search and filter controls for larger boards
 - Optional archived-item view

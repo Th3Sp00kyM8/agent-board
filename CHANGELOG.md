@@ -4,6 +4,19 @@ All notable changes to Agent Board will be documented in this file.
 
 The format is based on Keep a Changelog, and this project uses simple `0.x` versions while the tool is early.
 
+## [0.15.0] - 2026-06-28
+
+### Added
+
+- Import replacement diff showing item, risk, decision, dependency, blocked, added, changed, and removed counts before confirmation
+- Form-based custom markdown export preset editor in Settings
+- One-click import repairs for missing owners, unknown domains, and unknown roadmap stages
+
+### Changed
+
+- Custom export presets can now be added, selected, edited, and deleted without editing raw JSON
+- Import dry-run review now flags owner, domain, and roadmap-stage cleanup before replacement
+
 ## [0.14.0] - 2026-06-28
 
 ### Added

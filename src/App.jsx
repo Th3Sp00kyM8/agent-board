@@ -526,6 +526,55 @@ function normalizeImportedReleaseTier(value) {
   return matches[key] || null;
 }
 
+function normalizeImportedDomain(value) {
+  const key = String(value || '').trim().toLowerCase().replace(/[_-]+/g, ' ');
+  const exact = PROJECT_DOMAINS.find(domain => domain.toLowerCase() === key);
+  if (exact) return exact;
+  const matches = {
+    ops: 'Operations',
+    operation: 'Operations',
+    support: 'Operations',
+    docs: 'Documentation',
+    doc: 'Documentation',
+    engineering: 'Engineering',
+    engineer: 'Engineering',
+    dev: 'Engineering',
+    development: 'Engineering',
+    product: 'Delivery',
+    delivery: 'Delivery',
+    dependency: 'Dependency',
+    blocked: 'Dependency',
+    risk: 'Risk',
+    roadmap: 'Roadmap',
+    decision: 'Decision',
+    research: 'Research',
+    design: 'Design',
+    qa: 'QA',
+    testing: 'QA',
+    stakeholder: 'Stakeholder',
+  };
+  return matches[key] || 'Delivery';
+}
+
+function normalizeImportedRoadmapStage(value) {
+  const key = String(value || '').trim().toLowerCase().replace(/[_-]+/g, ' ');
+  const exact = ROADMAP_STAGES.find(stage => stage.toLowerCase() === key);
+  if (exact) return exact;
+  const matches = {
+    current: 'Now',
+    active: 'Now',
+    immediate: 'Now',
+    soon: 'Next',
+    upcoming: 'Next',
+    planned: 'Next',
+    future: 'Later',
+    someday: 'Later',
+    backlog: 'Backlog',
+    parked: 'Backlog',
+  };
+  return matches[key] || 'Backlog';
+}
+
 function createStatePayload(items, sprintBoard, extra = {}) {
   return {
     app: BOARD_APP_ID,
@@ -610,9 +659,14 @@ function validateImportDryRun(rawData, rawItems, sprintBoard, mappedImport = { m
   let unknownFieldCount = 0;
   let unknownColumnCount = 0;
   let unknownTierCount = 0;
+  let unknownDomainCount = 0;
+  let unknownRoadmapCount = 0;
+  let missingOwnerCount = 0;
   let missingRequiredCount = 0;
   const unknownColumns = new Set();
   const unknownTiers = new Set();
+  const unknownDomains = new Set();
+  const unknownRoadmapStages = new Set();
 
   rawItems.forEach((item, index) => {
     const id = String(item?.id || '').trim();
@@ -634,6 +688,15 @@ function validateImportDryRun(rawData, rawItems, sprintBoard, mappedImport = { m
     if (item?.releaseTier && !RELEASE_TIERS.some(tier => tier.id === item.releaseTier)) {
       unknownTierCount += 1;
       unknownTiers.add(String(item.releaseTier));
+    }
+    if (!String(item?.owner || '').trim()) missingOwnerCount += 1;
+    if (item?.domain && !PROJECT_DOMAINS.includes(item.domain)) {
+      unknownDomainCount += 1;
+      unknownDomains.add(String(item.domain));
+    }
+    if (item?.roadmapStage && !ROADMAP_STAGES.includes(item.roadmapStage)) {
+      unknownRoadmapCount += 1;
+      unknownRoadmapStages.add(String(item.roadmapStage));
     }
     Object.keys(item || {}).forEach(key => {
       if (!KNOWN_ITEM_FIELDS.includes(key)) unknownFieldCount += 1;
@@ -661,6 +724,21 @@ function validateImportDryRun(rawData, rawItems, sprintBoard, mappedImport = { m
     remediationTips.push(`Convert incoming release tiers to one of: ${RELEASE_TIERS.map(tier => tier.id).join(', ')}.`);
     repairActions.push({ id: 'releaseTiers', label: 'Normalize release tiers' });
   }
+  if (missingOwnerCount) {
+    warnings.push(`${missingOwnerCount} item(s) do not have an owner.`);
+    remediationTips.push('Assign an owner before import, or use Unassigned as a temporary owner.');
+    repairActions.push({ id: 'owners', label: 'Fill missing owners' });
+  }
+  if (unknownDomainCount) {
+    warnings.push(`${unknownDomainCount} item(s) use unknown domains (${Array.from(unknownDomains).slice(0, 5).join(', ')}). Expected: ${PROJECT_DOMAINS.join(', ')}.`);
+    remediationTips.push('Convert incoming domain values to Agent Board domains.');
+    repairActions.push({ id: 'domains', label: 'Normalize domains' });
+  }
+  if (unknownRoadmapCount) {
+    warnings.push(`${unknownRoadmapCount} item(s) use unknown roadmap stages (${Array.from(unknownRoadmapStages).slice(0, 5).join(', ')}). Expected: ${ROADMAP_STAGES.join(', ')}.`);
+    remediationTips.push('Convert incoming roadmap values to Now, Next, Later, or Backlog.');
+    repairActions.push({ id: 'roadmap', label: 'Normalize roadmap' });
+  }
   if (unknownFieldCount) {
     warnings.push(`${unknownFieldCount} custom item field(s) are not shown by this version.`);
     remediationTips.push('Keep useful custom fields in your fork, or map them to Agent Board fields in Settings before importing.');
@@ -686,6 +764,9 @@ function validateImportDryRun(rawData, rawItems, sprintBoard, mappedImport = { m
     unknownFieldCount,
     unknownColumnCount,
     unknownTierCount,
+    unknownDomainCount,
+    unknownRoadmapCount,
+    missingOwnerCount,
     missingRequiredCount,
   };
 }
@@ -765,6 +846,30 @@ function summarizeItemsForImport(items) {
     risks: items.filter(item => item.riskLevel && item.riskLevel !== 'None' && item.column !== 'Done').length,
     decisions: items.filter(item => item.decisionStatus && item.decisionStatus !== 'None').length,
     dependencies: items.reduce((sum, item) => sum + (item.dependencies || []).length, 0),
+  };
+}
+
+function buildImportDiff(currentItems, incomingItems) {
+  const currentByPath = new Map(currentItems.map(item => [String(item.path || '').toLowerCase(), item]));
+  const incomingByPath = new Map(incomingItems.map(item => [String(item.path || '').toLowerCase(), item]));
+  const added = incomingItems.filter(item => !currentByPath.has(String(item.path || '').toLowerCase())).slice(0, 6);
+  const removed = currentItems.filter(item => !incomingByPath.has(String(item.path || '').toLowerCase())).slice(0, 6);
+  const changed = incomingItems.filter(item => {
+    const current = currentByPath.get(String(item.path || '').toLowerCase());
+    if (!current) return false;
+    return ['title', 'column', 'owner', 'domain', 'roadmapStage', 'riskLevel'].some(field => String(current[field] || '') !== String(item[field] || ''));
+  }).slice(0, 6);
+  const currentSummary = summarizeItemsForImport(currentItems);
+  const incomingSummary = summarizeItemsForImport(incomingItems);
+  return {
+    totalDelta: incomingSummary.total - currentSummary.total,
+    riskDelta: incomingSummary.risks - currentSummary.risks,
+    decisionDelta: incomingSummary.decisions - currentSummary.decisions,
+    dependencyDelta: incomingSummary.dependencies - currentSummary.dependencies,
+    columnDeltas: Object.fromEntries(COLUMNS.map(column => [column, incomingSummary.columns[column] - currentSummary.columns[column]])),
+    added,
+    removed,
+    changed,
   };
 }
 
@@ -1593,6 +1698,15 @@ export default function App() {
       if (actionId === 'releaseTiers' || actionId === 'all') {
         const normalizedTier = normalizeImportedReleaseTier(next.releaseTier);
         if (normalizedTier) next.releaseTier = normalizedTier;
+      }
+      if (actionId === 'owners' || actionId === 'all') {
+        if (!String(next.owner || '').trim()) next.owner = 'Unassigned';
+      }
+      if (actionId === 'domains' || actionId === 'all') {
+        next.domain = normalizeImportedDomain(next.domain);
+      }
+      if (actionId === 'roadmap' || actionId === 'all') {
+        next.roadmapStage = normalizeImportedRoadmapStage(next.roadmapStage);
       }
       return next;
     });
@@ -2506,6 +2620,7 @@ function ImportConfirmModal({ imported, currentItems, onCancel, onConfirm, onRep
   const modalRef = useFocusTrap(true);
   const current = summarizeItemsForImport(currentItems);
   const incoming = summarizeItemsForImport(imported.items);
+  const importDiff = buildImportDiff(currentItems, imported.items);
   const previewItems = imported.items.slice(0, 5);
   const validation = imported.validation || { ok: true, errors: [], warnings: [], remediationTips: [] };
   return (
@@ -2534,6 +2649,21 @@ function ImportConfirmModal({ imported, currentItems, onCancel, onConfirm, onRep
           <div className="bg-slate-950/50 border border-slate-800 rounded p-2">
             <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-1">Source</div>
             <div className="text-slate-300">Version: {imported.sourceVersion || 'unknown'} / schema {imported.schemaVersion || 'legacy'}</div>
+          </div>
+          <div className="bg-slate-950/50 border border-slate-800 rounded p-2">
+            <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">Replacement Diff</div>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-1 text-center mb-2">
+              <ImportDelta label="Items" value={importDiff.totalDelta} />
+              <ImportDelta label="Risks" value={importDiff.riskDelta} />
+              <ImportDelta label="Decisions" value={importDiff.decisionDelta} />
+              <ImportDelta label="Deps" value={importDiff.dependencyDelta} />
+              <ImportDelta label="Blocked" value={importDiff.columnDeltas.Blocked} />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-[10px]">
+              <ImportDiffList title="Added" items={importDiff.added} empty="No new paths" />
+              <ImportDiffList title="Changed" items={importDiff.changed} empty="No matching-path changes" />
+              <ImportDiffList title="Removed" items={importDiff.removed} empty="No removed paths" />
+            </div>
           </div>
           <div className={`border rounded p-2 ${validation.ok ? 'bg-emerald-950/20 border-emerald-900/50 text-emerald-300' : 'bg-red-950/30 border-red-900/60 text-red-300'}`}>
             <div className="text-[10px] uppercase tracking-wider mb-1">{validation.ok ? 'Dry Run Passed' : 'Dry Run Blocked'}</div>
@@ -2590,6 +2720,24 @@ function ImportConfirmModal({ imported, currentItems, onCancel, onConfirm, onRep
           <button onClick={onCancel} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded text-xs">Cancel</button>
           <button onClick={onConfirm} disabled={!validation.ok} className={`px-3 py-1.5 rounded text-xs ${validation.ok ? 'bg-amber-700 hover:bg-amber-600' : 'bg-slate-800 text-slate-500 cursor-not-allowed'}`}>Replace with import</button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function ImportDelta({ label, value }) {
+  const tone = value > 0 ? 'text-emerald-300' : value < 0 ? 'text-red-300' : 'text-slate-400';
+  const formatted = value > 0 ? `+${value}` : String(value);
+  return <div className="bg-slate-900/70 border border-slate-800 rounded p-1"><div className={`font-semibold ${tone}`}>{formatted}</div><div className="text-slate-500 truncate">{label}</div></div>;
+}
+
+function ImportDiffList({ title, items, empty }) {
+  return (
+    <div className="bg-slate-900/60 border border-slate-800 rounded p-2">
+      <div className="text-slate-500 uppercase tracking-wider mb-1">{title}</div>
+      <div className="space-y-0.5">
+        {items.map(item => <div key={`${title}-${item.id || item.path}`} className="text-slate-300 truncate"><span className="font-mono text-blue-300">{item.path || '-'}</span> {item.title || '(untitled)'}</div>)}
+        {items.length === 0 && <div className="text-slate-600 italic">{empty}</div>}
       </div>
     </div>
   );
@@ -2847,20 +2995,24 @@ function DashboardList({ title, items, emptyText, accent, onOpen, metaFor }) {
 
 function SettingsModal({ config, commandShortcut, status, error, onShortcutChange, onSave, onClose }) {
   const modalRef = useFocusTrap(true);
+  const initialExportPresetDrafts = normalizeExportPresets(config.exportPresets);
   const [form, setForm] = useState({
     projectName: config.projectName || DEFAULT_APP_CONFIG.projectName,
     workstream: config.labels?.workstream || DEFAULT_APP_CONFIG.labels.workstream,
     cycle: config.labels?.cycle || DEFAULT_APP_CONFIG.labels.cycle,
     commandShortcut,
     importAliasesText: formatImportAliasesForSettings(config.importFieldAliases),
-    exportPresetsText: formatExportPresetsForSettings(config.exportPresets),
   });
+  const [exportPresetDrafts, setExportPresetDrafts] = useState(initialExportPresetDrafts);
+  const [selectedExportPresetId, setSelectedExportPresetId] = useState(initialExportPresetDrafts[0]?.id || '');
   const [formError, setFormError] = useState('');
-  const canSave = form.projectName.trim() && form.workstream.trim() && form.cycle.trim() && status !== 'saving';
+  const selectedExportPreset = exportPresetDrafts.find(preset => preset.id === selectedExportPresetId) || exportPresetDrafts[0] || null;
+  const exportPresetsValid = exportPresetDrafts.every(preset => String(preset.label || '').trim() && String(preset.template || '').trim());
+  const canSave = form.projectName.trim() && form.workstream.trim() && form.cycle.trim() && exportPresetsValid && status !== 'saving';
   function submit() {
     if (!canSave) return;
     try {
-      const exportPresets = parseExportPresetsFromSettings(form.exportPresetsText);
+      const exportPresets = normalizeExportPresets(exportPresetDrafts);
       setFormError('');
       onShortcutChange(form.commandShortcut);
       onSave({
@@ -2881,11 +3033,32 @@ function SettingsModal({ config, commandShortcut, status, error, onShortcutChang
   function applyAliasPreset(preset) {
     setForm({ ...form, importAliasesText: formatImportAliasesForSettings(preset.aliases) });
   }
-  let customExportPresetCount = 0;
-  try {
-    customExportPresetCount = parseExportPresetsFromSettings(form.exportPresetsText).length;
-  } catch {
-    customExportPresetCount = 0;
+  function updateExportPresetDraft(field, value) {
+    if (!selectedExportPreset) return;
+    setExportPresetDrafts(exportPresetDrafts.map(preset => {
+      if (preset.id !== selectedExportPreset.id) return preset;
+      const next = { ...preset, [field]: value };
+      if (field === 'label') next.id = safeFilenamePart(value || preset.id);
+      return next;
+    }));
+    if (field === 'label') setSelectedExportPresetId(safeFilenamePart(value || selectedExportPreset.id));
+  }
+  function addExportPresetDraft() {
+    const preset = {
+      id: `custom-${exportPresetDrafts.length + 1}`,
+      label: `Custom ${exportPresetDrafts.length + 1}`,
+      detail: 'Custom template',
+      template: '**{{project}} Update** - {{date}}\n\n**Snapshot:** {{total}} total - Blocked {{blocked}}\n\n**Next up:**\n{{nextUp}}',
+    };
+    const nextPresets = [...exportPresetDrafts, preset].slice(0, 6);
+    setExportPresetDrafts(nextPresets);
+    setSelectedExportPresetId(preset.id);
+  }
+  function deleteExportPresetDraft() {
+    if (!selectedExportPreset) return;
+    const nextPresets = exportPresetDrafts.filter(preset => preset.id !== selectedExportPreset.id);
+    setExportPresetDrafts(nextPresets);
+    setSelectedExportPresetId(nextPresets[0]?.id || '');
   }
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50" role="dialog" aria-modal="true" aria-label="Settings" onClick={onClose}>
@@ -2928,15 +3101,34 @@ function SettingsModal({ config, commandShortcut, status, error, onShortcutChang
           </div>
           <div>
             <label className="block text-slate-500 mb-1">Custom markdown export presets</label>
-            <textarea value={form.exportPresetsText} onChange={e => setForm({ ...form, exportPresetsText: e.target.value })} rows={8} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 font-mono text-[11px]" />
-            <div className="text-[10px] text-slate-500 mt-1">JSON array. Template tokens include {'{{project}}'}, {'{{date}}'}, {'{{total}}'}, {'{{blocked}}'}, {'{{nextUp}}'}, {'{{risks}}'}, and {'{{roadmapCounts}}'}.</div>
+            <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-1.5 mb-1.5">
+              <select value={selectedExportPreset?.id || ''} onChange={e => setSelectedExportPresetId(e.target.value)} className="bg-slate-800 border border-slate-700 rounded px-2 py-1.5">
+                {exportPresetDrafts.map(preset => <option key={preset.id} value={preset.id}>{preset.label}</option>)}
+                {exportPresetDrafts.length === 0 && <option value="">No custom presets</option>}
+              </select>
+              <button onClick={addExportPresetDraft} type="button" className="px-2 py-1.5 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px]">Add preset</button>
+              <button onClick={deleteExportPresetDraft} type="button" disabled={!selectedExportPreset} className={`px-2 py-1.5 rounded border text-[11px] ${selectedExportPreset ? 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200' : 'bg-slate-900 border-slate-800 text-slate-600 cursor-not-allowed'}`}>Delete</button>
+            </div>
+            {selectedExportPreset ? (
+              <div className="space-y-1.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                  <input value={selectedExportPreset.label} onChange={e => updateExportPresetDraft('label', e.target.value)} placeholder="Preset label" className="bg-slate-800 border border-slate-700 rounded px-2 py-1.5" />
+                  <input value={selectedExportPreset.detail} onChange={e => updateExportPresetDraft('detail', e.target.value)} placeholder="Short detail" className="bg-slate-800 border border-slate-700 rounded px-2 py-1.5" />
+                </div>
+                <textarea value={selectedExportPreset.template} onChange={e => updateExportPresetDraft('template', e.target.value)} rows={6} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 font-mono text-[11px]" />
+              </div>
+            ) : (
+              <div className="bg-slate-950/60 border border-slate-800 rounded p-2 text-[11px] text-slate-500">Add a preset to create a reusable markdown export.</div>
+            )}
+            <div className="text-[10px] text-slate-500 mt-1">Template tokens include {'{{project}}'}, {'{{date}}'}, {'{{total}}'}, {'{{blocked}}'}, {'{{nextUp}}'}, {'{{risks}}'}, and {'{{roadmapCounts}}'}.</div>
+            {!exportPresetsValid && <div className="text-[10px] text-amber-300 mt-1">Each custom preset needs a label and template before saving.</div>}
           </div>
           <div className="bg-slate-950/60 border border-slate-800 rounded p-2 text-[10px] text-slate-400 space-y-1">
             <div><span className="text-slate-500">Title:</span> {(form.projectName || DEFAULT_APP_CONFIG.projectName).toUpperCase()}</div>
             <div><span className="text-slate-500">Example:</span> {form.workstream || 'Workstream'} A in current {(form.cycle || 'Sprint').toLowerCase()}</div>
             <div><span className="text-slate-500">Shortcut:</span> {getShortcutLabel(form.commandShortcut)}</div>
             <div><span className="text-slate-500">Import aliases:</span> {Object.values(parseImportAliasesFromSettings(form.importAliasesText)).reduce((sum, aliases) => sum + aliases.length, 0)} active</div>
-            <div><span className="text-slate-500">Custom export presets:</span> {customExportPresetCount} active</div>
+            <div><span className="text-slate-500">Custom export presets:</span> {exportPresetDrafts.length} active</div>
           </div>
           {formError && <div className="text-[11px] text-red-300 bg-red-950/40 border border-red-900/50 rounded p-2">{formError}</div>}
           {error && <div className="text-[11px] text-red-300 bg-red-950/40 border border-red-900/50 rounded p-2">{error}</div>}
