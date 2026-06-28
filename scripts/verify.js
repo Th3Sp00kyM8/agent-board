@@ -100,6 +100,8 @@ function verifyConfig() {
   expect(config.labels && isNonEmptyString(config.labels.workstream), 'config.example.json labels.workstream must be a non-empty string.');
   expect(config.labels && isNonEmptyString(config.labels.cycle), 'config.example.json labels.cycle must be a non-empty string.');
   expect(config.importFieldAliases && Array.isArray(config.importFieldAliases.owner), 'config.example.json should include importFieldAliases.');
+  expect(Array.isArray(config.exportPresets) && config.exportPresets.length > 0, 'config.example.json should include custom exportPresets.');
+  expect(isNonEmptyString(config.exportPresets[0].template), 'config.example.json custom export preset should include a template.');
 }
 
 function verifySampleState() {
@@ -276,12 +278,16 @@ function verifyReleaseAssets() {
   expect(readme.includes('import field aliases'), 'README should document configurable import aliases.');
   expect(readme.includes('downloaded as a `.md` file'), 'README should document markdown download support.');
   expect(readme.includes('GitHub Issues, Jira, and Linear'), 'README should document import alias presets.');
-  expect(readme.includes('grouped, renamed, reordered, deleted, copied, or downloaded'), 'README should document saved map view grouping and sharing.');
+  expect(readme.includes('grouped, renamed, reordered, deleted, copied, downloaded, or imported'), 'README should document saved map view grouping and sharing.');
   expect(readme.includes('stakeholder summary, weekly update, release review'), 'README should document expanded export presets.');
   expect(readme.includes('warning shows the expected values'), 'README should document alias-mapped validation hints.');
-  expect(readme.includes('support review, audit prep, or planning summary'), 'README should document support, audit, and planning export presets.');
+  expect(readme.includes('support review, audit prep, planning summary, or custom template'), 'README should document support, audit, planning, and custom export presets.');
   expect(readme.includes('grouped, shareable'), 'README should document grouped shareable Project Map presets.');
   expect(readme.includes('fix suggestions'), 'README should document import remediation suggestions.');
+  expect(readme.includes('custom markdown export presets'), 'README should document custom markdown export presets.');
+  expect(readme.includes('{{project}}'), 'README should document custom export template tokens.');
+  expect(readme.includes('repaired from the preview'), 'README should document import preview repair actions.');
+  expect(readme.includes('imported as shared view bundles'), 'README should document importing Project Map view bundles.');
   expect(readme.includes('Focus Dashboard'), 'README should document the Focus Dashboard feature.');
   expect(readme.includes('Project Map'), 'README should document the Project Map feature.');
   expect(readme.includes('schemaVersion'), 'README should document board schema metadata.');

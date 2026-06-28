@@ -4,6 +4,19 @@ All notable changes to Agent Board will be documented in this file.
 
 The format is based on Keep a Changelog, and this project uses simple `0.x` versions while the tool is early.
 
+## [0.14.0] - 2026-06-28
+
+### Added
+
+- Import support for shared Project Map view bundles exported from another Agent Board copy
+- Custom markdown export presets stored in local config and shown beside built-in export presets
+- One-click import preview repair actions for common status and release-tier value mismatches
+
+### Changed
+
+- Settings now includes a JSON editor for custom markdown export templates
+- Import preview now recomputes validation after simple repair actions before replacement
+
 ## [0.13.0] - 2026-06-28
 
 ### Added

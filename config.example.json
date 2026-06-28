@@ -22,5 +22,13 @@
     "decisionStatus": ["decision", "decision_status"],
     "owner": ["assignee", "responsible", "lead"]
   },
-  "notes": "Local project name, visible labels, and import aliases. Edit config.json after first run; keep real project data out of Git."
+  "exportPresets": [
+    {
+      "id": "custom-brief",
+      "label": "Custom Brief",
+      "detail": "Editable template",
+      "template": "**{{project}} Brief** - {{date}}\n\n**Snapshot:** {{total}} total - Doing {{doing}} - Blocked {{blocked}} - Done {{done}}\n\n**Next up:**\n{{nextUp}}\n\n**Risks:**\n{{risks}}"
+    }
+  ],
+  "notes": "Local project name, visible labels, import aliases, and custom export presets. Edit config.json after first run; keep real project data out of Git."
 }

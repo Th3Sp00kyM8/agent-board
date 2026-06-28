@@ -89,7 +89,7 @@ This separation keeps the app reusable while keeping real project data out of Gi
 
 ## Customizing For Your Project
 
-Click `Settings` in the header to edit the local project title, work item label, cycle label, and import field aliases. Settings includes import alias presets for Default, GitHub Issues, Jira, and Linear-style schemas. Settings are saved to ignored local `config.json` so forks can keep reusable defaults in Git while each user keeps private local wording on their machine.
+Click `Settings` in the header to edit the local project title, work item label, cycle label, import field aliases, and custom markdown export presets. Settings includes import alias presets for Default, GitHub Issues, Jira, and Linear-style schemas. Settings are saved to ignored local `config.json` so forks can keep reusable defaults in Git while each user keeps private local wording on their machine.
 
 You can also edit `config.json` directly after first run:
 
@@ -104,11 +104,19 @@ You can also edit `config.json` directly after first run:
     "owner": ["assignee", "lead"],
     "dependencies": ["dependsOn", "blockedBy"],
     "riskLevel": ["risk"]
-  }
+  },
+  "exportPresets": [
+    {
+      "id": "custom-brief",
+      "label": "Custom Brief",
+      "detail": "Editable template",
+      "template": "**{{project}} Brief** - {{date}}\n\n**Next up:**\n{{nextUp}}"
+    }
+  ]
 }
 ```
 
-Refresh the browser after direct file edits. `projectName` changes the app title. `labels.workstream` and `labels.cycle` update visible UI labels and the Sync to Chat summary.
+Refresh the browser after direct file edits. `projectName` changes the app title. `labels.workstream` and `labels.cycle` update visible UI labels and the Sync to Chat summary. Custom markdown export templates support simple tokens such as `{{project}}`, `{{date}}`, `{{total}}`, `{{blocked}}`, `{{nextUp}}`, `{{risks}}`, and `{{roadmapCounts}}`.
 
 For deeper changes, edit `src/App.jsx` constants such as columns, tiers, source legend, project domains, roadmap stages, risk levels, and decision states. Those are intentionally small and near the top of the file.
 
@@ -128,9 +136,9 @@ Click `Backup` in the header to create a timestamped copy of `state.json` in `ba
 
 ## Import And Export
 
-Use `Export` to download a full JSON copy of the board. Exports include `app`, `schemaVersion`, and `version` metadata so future forks can identify compatible board files. The export modal also includes markdown export presets for a chat sync, risk review, decision log, roadmap summary, stakeholder summary, weekly update, release review, support review, audit prep, or planning summary. Each markdown preset can be copied or downloaded as a `.md` file.
+Use `Export` to download a full JSON copy of the board. Exports include `app`, `schemaVersion`, and `version` metadata so future forks can identify compatible board files. The export modal also includes markdown export presets for a chat sync, risk review, decision log, roadmap summary, stakeholder summary, weekly update, release review, support review, audit prep, planning summary, or custom template. Each markdown preset can be copied or downloaded as a `.md` file.
 
-Use `Import` to preview and replace the current local board with a compatible JSON file. The import preview compares current and incoming item counts, column distribution, risks, decisions, dependencies, metadata, warnings, fix suggestions, and sample incoming items before replacement. Import dry-run validation blocks structurally invalid imports, including missing required item identifiers or titles, and flags duplicate ids, duplicate paths, unknown columns, unknown release tiers, and custom fields before you replace local data. Import field mapping recognizes common custom schema names such as `status`, `priority`, `assignee`, `dependsOn`, and `risk`, then reports the mapped fields in the preview. If alias-mapped fields still contain unknown columns or release tiers, the warning shows the expected values and the preview suggests how to fix the data. You can edit import field aliases in `Settings`. Agent Board still accepts older item-array exports, adds current metadata on save, and warns before importing unknown newer schemas. Create a backup first if the current board matters.
+Use `Import` to preview and replace the current local board with a compatible JSON file. The import preview compares current and incoming item counts, column distribution, risks, decisions, dependencies, metadata, warnings, fix suggestions, and sample incoming items before replacement. Import dry-run validation blocks structurally invalid imports, including missing required item identifiers or titles, and flags duplicate ids, duplicate paths, unknown columns, unknown release tiers, and custom fields before you replace local data. Import field mapping recognizes common custom schema names such as `status`, `priority`, `assignee`, `dependsOn`, and `risk`, then reports the mapped fields in the preview. If alias-mapped fields still contain unknown columns or release tiers, the warning shows the expected values and the preview suggests how to fix the data. Simple status and release-tier mismatches can be repaired from the preview before replacement. You can edit import field aliases in `Settings`. Agent Board still accepts older item-array exports, adds current metadata on save, and warns before importing unknown newer schemas. Create a backup first if the current board matters.
 
 ## Templates
 
@@ -156,7 +164,7 @@ The first screen is designed to answer the questions a project owner usually has
 
 ## Project Map
 
-The Project Map is a compact planning layer above the board. Each item can carry a domain, owner, dependency list, risk level, roadmap stage, and decision state. Dependencies can point to another item by `id`, visible path such as `A`, or exact title. The panel then highlights unfinished dependency blockers, missing links, open risks, roadmap distribution, and pending decisions. Use the domain, owner, and roadmap filters to narrow the map counts without changing the board filters, then save common map views as named local presets. Saved map views can be grouped, renamed, reordered, deleted, copied, or downloaded for sharing.
+The Project Map is a compact planning layer above the board. Each item can carry a domain, owner, dependency list, risk level, roadmap stage, and decision state. Dependencies can point to another item by `id`, visible path such as `A`, or exact title. The panel then highlights unfinished dependency blockers, missing links, open risks, roadmap distribution, and pending decisions. Use the domain, owner, and roadmap filters to narrow the map counts without changing the board filters, then save common map views as named local presets. Saved map views can be grouped, renamed, reordered, deleted, copied, downloaded, or imported as shared view bundles.
 
 These fields are intentionally generic so forks can rename them for software work, content planning, operations, research, or other project-management workflows without needing private data in the upstream template.
 

@@ -175,6 +175,14 @@ const DEFAULT_APP_CONFIG = {
   projectName: 'Agent Board',
   labels: { workstream: 'Workstream', cycle: 'Sprint' },
   importFieldAliases: IMPORT_FIELD_ALIASES,
+  exportPresets: [
+    {
+      id: 'custom-brief',
+      label: 'Custom Brief',
+      detail: 'Editable template',
+      template: '**{{project}} Brief** - {{date}}\n\n**Snapshot:** {{total}} total - Doing {{doing}} - Blocked {{blocked}} - Done {{done}}\n\n**Next up:**\n{{nextUp}}\n\n**Risks:**\n{{risks}}',
+    },
+  ],
 };
 
 function normalizeImportAliases(value) {
@@ -192,7 +200,35 @@ function normalizeAppConfig(config) {
     ...(config || {}),
     labels: { ...DEFAULT_APP_CONFIG.labels, ...((config || {}).labels || {}) },
     importFieldAliases: normalizeImportAliases((config || {}).importFieldAliases),
+    exportPresets: normalizeExportPresets((config || {}).exportPresets),
   };
+}
+
+function normalizeExportPresets(value) {
+  const source = Array.isArray(value) ? value : DEFAULT_APP_CONFIG.exportPresets;
+  return source.map((preset, index) => {
+    const label = String(preset?.label || '').trim();
+    const template = String(preset?.template || '').trim();
+    if (!label || !template) return null;
+    return {
+      id: safeFilenamePart(preset?.id || label || `custom-${index + 1}`),
+      label,
+      detail: String(preset?.detail || 'Custom template').trim(),
+      template,
+    };
+  }).filter(Boolean).slice(0, 6);
+}
+
+function formatExportPresetsForSettings(presets) {
+  return JSON.stringify(normalizeExportPresets(presets), null, 2);
+}
+
+function parseExportPresetsFromSettings(text) {
+  const trimmed = String(text || '').trim();
+  if (!trimmed) return [];
+  const parsed = JSON.parse(trimmed);
+  if (!Array.isArray(parsed)) throw new Error('Custom export presets must be a JSON array.');
+  return normalizeExportPresets(parsed);
 }
 
 function formatImportAliasesForSettings(aliases) {
@@ -426,6 +462,70 @@ function uniqueItems(items) {
   });
 }
 
+function normalizeProjectMapPresetBundle(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data) || data.type !== 'project-map-presets' || !Array.isArray(data.projectMapPresets)) return null;
+  const presets = data.projectMapPresets.map((preset, index) => {
+    const label = String(preset?.label || `Imported view ${index + 1}`).trim();
+    const group = PROJECT_MAP_PRESET_GROUPS.includes(preset?.group) ? preset.group : 'Custom';
+    const filters = preset?.filters && typeof preset.filters === 'object' && !Array.isArray(preset.filters) ? preset.filters : {};
+    return {
+      id: uid(),
+      label,
+      group,
+      filters: {
+        domain: String(filters.domain || 'All'),
+        owner: String(filters.owner || 'All'),
+        roadmapStage: ROADMAP_STAGES.includes(filters.roadmapStage) ? filters.roadmapStage : 'All',
+      },
+    };
+  }).filter(preset => preset.label).slice(0, 8);
+  return presets.length ? { presets, exportedAt: data.exportedAt || null } : null;
+}
+
+function normalizeImportedColumn(value) {
+  const key = String(value || '').trim().toLowerCase().replace(/[_-]+/g, ' ');
+  const matches = {
+    'todo': 'To Do',
+    'to do': 'To Do',
+    'backlog': 'To Do',
+    'open': 'To Do',
+    'new': 'To Do',
+    'doing': 'Doing',
+    'in progress': 'Doing',
+    'progress': 'Doing',
+    'active': 'Doing',
+    'review': 'In Review',
+    'in review': 'In Review',
+    'qa': 'In Review',
+    'blocked': 'Blocked',
+    'stuck': 'Blocked',
+    'waiting': 'Blocked',
+    'done': 'Done',
+    'closed': 'Done',
+    'complete': 'Done',
+    'completed': 'Done',
+  };
+  return matches[key] || null;
+}
+
+function normalizeImportedReleaseTier(value) {
+  const key = String(value || '').trim().toLowerCase().replace(/[_-]+/g, ' ');
+  const matches = {
+    'core': 'core_release',
+    'core release': 'core_release',
+    'release': 'core_release',
+    'must have': 'core_release',
+    'post': 'post_release',
+    'post release': 'post_release',
+    'nice to have': 'post_release',
+    'future': 'future_content',
+    'future content': 'future_content',
+    'later': 'future_content',
+    'backlog': 'future_content',
+  };
+  return matches[key] || null;
+}
+
 function createStatePayload(items, sprintBoard, extra = {}) {
   return {
     app: BOARD_APP_ID,
@@ -461,7 +561,7 @@ function mapImportItemFields(rawItems, importAliases = IMPORT_FIELD_ALIASES) {
 }
 
 function normalizeStatePayload(data, importAliases = IMPORT_FIELD_ALIASES) {
-  const warnings = [];
+  const sourceWarnings = [];
   let importedItems = null;
   let importedSprint = null;
   let schemaVersion = 0;
@@ -469,15 +569,15 @@ function normalizeStatePayload(data, importAliases = IMPORT_FIELD_ALIASES) {
 
   if (Array.isArray(data)) {
     importedItems = data;
-    warnings.push('This file is a legacy item array. Agent Board will add current board metadata on save.');
+    sourceWarnings.push('This file is a legacy item array. Agent Board will add current board metadata on save.');
   } else if (data && typeof data === 'object' && Array.isArray(data.items)) {
     importedItems = data.items;
     if (data.sprintBoard && typeof data.sprintBoard === 'object' && !Array.isArray(data.sprintBoard)) importedSprint = data.sprintBoard;
     schemaVersion = Number.isFinite(Number(data.schemaVersion)) ? Number(data.schemaVersion) : 0;
     sourceVersion = typeof data.version === 'string' ? data.version : (schemaVersion ? `schema-${schemaVersion}` : 'legacy-object');
-    if (!schemaVersion) warnings.push('This file has no schemaVersion. Agent Board will import it as legacy data and add current metadata on save.');
-    if (schemaVersion > BOARD_SCHEMA_VERSION) warnings.push(`This file uses schemaVersion ${schemaVersion}. This app supports ${BOARD_SCHEMA_VERSION}; known fields will import, but newer fields may be ignored.`);
-    if (data.app && data.app !== BOARD_APP_ID) warnings.push(`This file identifies as ${data.app}. Verify it is compatible before replacing your board.`);
+    if (!schemaVersion) sourceWarnings.push('This file has no schemaVersion. Agent Board will import it as legacy data and add current metadata on save.');
+    if (schemaVersion > BOARD_SCHEMA_VERSION) sourceWarnings.push(`This file uses schemaVersion ${schemaVersion}. This app supports ${BOARD_SCHEMA_VERSION}; known fields will import, but newer fields may be ignored.`);
+    if (data.app && data.app !== BOARD_APP_ID) sourceWarnings.push(`This file identifies as ${data.app}. Verify it is compatible before replacing your board.`);
   } else {
     throw new Error('expected an items array or an export object with { items, sprintBoard }');
   }
@@ -485,14 +585,14 @@ function normalizeStatePayload(data, importAliases = IMPORT_FIELD_ALIASES) {
   const mappedImport = mapImportItemFields(importedItems, importAliases);
   importedItems = mappedImport.items;
   const validation = validateImportDryRun(data, importedItems, importedSprint, mappedImport);
-  warnings.push(...validation.warnings);
 
   return {
     items: importedItems.map(ensureItemShape),
     sprintBoard: importedSprint,
     schemaVersion,
     sourceVersion,
-    warnings,
+    sourceWarnings,
+    warnings: [...sourceWarnings, ...validation.warnings],
     mappings: mappedImport.mappings,
     validation,
   };
@@ -502,6 +602,7 @@ function validateImportDryRun(rawData, rawItems, sprintBoard, mappedImport = { m
   const warnings = [];
   const errors = [];
   const remediationTips = [];
+  const repairActions = [];
   const duplicateIds = new Set();
   const duplicatePaths = new Set();
   const seenIds = new Set();
@@ -552,11 +653,13 @@ function validateImportDryRun(rawData, rawItems, sprintBoard, mappedImport = { m
     const hint = mappedImport.targetCounts?.column ? ' These values may have come from a mapped status/state field.' : '';
     warnings.push(`${unknownColumnCount} item(s) use unknown columns (${Array.from(unknownColumns).slice(0, 5).join(', ')}). Expected: ${COLUMNS.join(', ')}.${hint}`);
     remediationTips.push(`Convert incoming status values to one of: ${COLUMNS.join(', ')}.`);
+    repairActions.push({ id: 'columns', label: 'Normalize statuses' });
   }
   if (unknownTierCount) {
     const hint = mappedImport.targetCounts?.releaseTier ? ' These values may have come from a mapped release/tier field.' : '';
     warnings.push(`${unknownTierCount} item(s) use unknown release tiers (${Array.from(unknownTiers).slice(0, 5).join(', ')}). Expected: ${RELEASE_TIERS.map(tier => tier.id).join(', ')}.${hint}`);
     remediationTips.push(`Convert incoming release tiers to one of: ${RELEASE_TIERS.map(tier => tier.id).join(', ')}.`);
+    repairActions.push({ id: 'releaseTiers', label: 'Normalize release tiers' });
   }
   if (unknownFieldCount) {
     warnings.push(`${unknownFieldCount} custom item field(s) are not shown by this version.`);
@@ -577,6 +680,7 @@ function validateImportDryRun(rawData, rawItems, sprintBoard, mappedImport = { m
     errors,
     warnings,
     remediationTips,
+    repairActions,
     duplicateIds: duplicateIds.size,
     duplicatePaths: duplicatePaths.size,
     unknownFieldCount,
@@ -1269,6 +1373,15 @@ export default function App() {
     URL.revokeObjectURL(url);
   }
 
+  function importProjectMapPresetBundle(bundle) {
+    const merged = [...bundle.presets, ...projectMapPresets]
+      .filter((preset, index, list) => list.findIndex(item => item.label === preset.label && (item.group || 'Focus') === (preset.group || 'Focus')) === index)
+      .slice(0, 12);
+    persistProjectMapPresets(merged);
+    setInsightsExpanded(true);
+    alert(`Imported ${bundle.presets.length} Project Map view(s).`);
+  }
+
   function saveCommandShortcut(nextShortcut) {
     setCommandShortcut(nextShortcut);
     window.localStorage?.setItem(COMMAND_SHORTCUT_KEY, nextShortcut);
@@ -1448,7 +1561,13 @@ export default function App() {
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
-        const imported = normalizeStatePayload(JSON.parse(event.target.result), appConfig.importFieldAliases);
+        const parsed = JSON.parse(event.target.result);
+        const mapPresetBundle = normalizeProjectMapPresetBundle(parsed);
+        if (mapPresetBundle) {
+          importProjectMapPresetBundle(mapPresetBundle);
+          return;
+        }
+        const imported = normalizeStatePayload(parsed, appConfig.importFieldAliases);
         if (imported.items.length === 0) {
           alert('Imported file has no items.');
           return;
@@ -1460,6 +1579,31 @@ export default function App() {
     };
     reader.readAsText(file);
     e.target.value = '';
+  }
+
+  function repairImportPreview(actionId) {
+    if (!showImportConfirm) return;
+    const repairedItems = showImportConfirm.items.map(item => {
+      if (!item || typeof item !== 'object') return item;
+      const next = { ...item };
+      if (actionId === 'columns' || actionId === 'all') {
+        const normalizedColumn = normalizeImportedColumn(next.column);
+        if (normalizedColumn) next.column = normalizedColumn;
+      }
+      if (actionId === 'releaseTiers' || actionId === 'all') {
+        const normalizedTier = normalizeImportedReleaseTier(next.releaseTier);
+        if (normalizedTier) next.releaseTier = normalizedTier;
+      }
+      return next;
+    });
+    const validation = validateImportDryRun({ items: repairedItems }, repairedItems, showImportConfirm.sprintBoard, { mappings: showImportConfirm.mappings || [], targetCounts: {} });
+    const sourceWarnings = showImportConfirm.sourceWarnings || [];
+    setShowImportConfirm({
+      ...showImportConfirm,
+      items: repairedItems.map(ensureItemShape),
+      warnings: [...sourceWarnings, ...validation.warnings],
+      validation,
+    });
   }
 
   function confirmImport() {
@@ -1689,6 +1833,32 @@ export default function App() {
     return md;
   }
 
+  function renderCustomExportPreset(preset) {
+    if (!preset) return exportSyncSummary();
+    const itemLine = item => `- ${workstreamLabel} ${item.path} - ${item.title} [${item.column}] owner: ${item.owner || 'Unassigned'}`;
+    const itemList = list => list.length ? list.map(itemLine).join('\n') : '_(none)_';
+    const replacements = {
+      project: appConfig.projectName || 'Agent Board',
+      date: new Date().toLocaleString(),
+      total: String(items.length),
+      todo: String(columnCounts['To Do'].total),
+      doing: String(columnCounts['Doing'].total),
+      review: String(columnCounts['In Review'].total),
+      blocked: String(columnCounts['Blocked'].total),
+      done: String(columnCounts['Done'].total),
+      openRisks: String(openRiskItems.length),
+      pendingDecisions: String(pendingDecisionItems.length),
+      dependencyBlockers: String(dependencyTrace.blocked.length),
+      missingDependencies: String(dependencyTrace.missing.length),
+      nextUp: itemList(nextUpItems.slice(0, 8)),
+      blockedItems: itemList(blockedItems.slice(0, 8)),
+      risks: itemList(openRiskItems.slice(0, 8)),
+      decisions: itemList(pendingDecisionItems.slice(0, 8)),
+      roadmapCounts: ROADMAP_STAGES.map(stage => `- ${stage}: ${roadmapCounts[stage] || 0}`).join('\n'),
+    };
+    return preset.template.replace(/\{\{([a-zA-Z0-9_]+)\}\}/g, (match, key) => Object.prototype.hasOwnProperty.call(replacements, key) ? replacements[key] : match);
+  }
+
   function syncToChat() {
     const summary = exportSyncSummary();
     navigator.clipboard.writeText(summary).then(() => {
@@ -1735,8 +1905,10 @@ export default function App() {
     { id: 'settings', group: 'Data', label: 'Settings', detail: 'Project title and labels', keywords: 'project labels config', icon: <Settings size={13} />, run: openSettings },
     { id: 'reset', group: 'Data', label: 'Reset board', detail: 'Clear local state after confirmation', keywords: 'wipe clear empty start over', icon: <RotateCcw size={13} />, run: () => setShowResetConfirm(true) },
   ];
-  const exportPresetText = exportPreset === 'sync' ? exportSyncSummary() : exportPresetSummary(exportPreset);
-  const exportPresetOptions = [
+  const customExportPresets = normalizeExportPresets(appConfig.exportPresets);
+  const selectedCustomExportPreset = exportPreset.startsWith('custom:') ? customExportPresets.find(preset => `custom:${preset.id}` === exportPreset) : null;
+  const exportPresetText = exportPreset === 'sync' ? exportSyncSummary() : selectedCustomExportPreset ? renderCustomExportPreset(selectedCustomExportPreset) : exportPresetSummary(exportPreset);
+  const builtInExportPresetOptions = [
     { id: 'sync', label: 'Sync', detail: 'Active handoff' },
     { id: 'risks', label: 'Risks', detail: 'Risk review' },
     { id: 'decisions', label: 'Decisions', detail: 'Decision log' },
@@ -1747,6 +1919,10 @@ export default function App() {
     { id: 'support', label: 'Support', detail: 'Support review' },
     { id: 'audit', label: 'Audit', detail: 'Audit prep' },
     { id: 'planning', label: 'Planning', detail: 'Planning summary' },
+  ];
+  const exportPresetOptions = [
+    ...builtInExportPresetOptions,
+    ...customExportPresets.map(preset => ({ id: `custom:${preset.id}`, label: preset.label, detail: preset.detail || 'Custom template' })),
   ];
   const groupedProjectMapPresets = PROJECT_MAP_PRESET_GROUPS.map(group => ({
     group,
@@ -2278,7 +2454,7 @@ export default function App() {
           </div>
         )}
 
-        {showImportConfirm && <ImportConfirmModal imported={showImportConfirm} currentItems={items} onCancel={() => setShowImportConfirm(null)} onConfirm={confirmImport} />}
+        {showImportConfirm && <ImportConfirmModal imported={showImportConfirm} currentItems={items} onCancel={() => setShowImportConfirm(null)} onConfirm={confirmImport} onRepair={repairImportPreview} />}
 
         {showExport && (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
@@ -2287,7 +2463,7 @@ export default function App() {
               <div className="p-3 overflow-y-auto flex-1 space-y-3">
                 <div>
                   <h3 className="text-xs font-semibold mb-1">Markdown export presets</h3>
-                  <p className="text-[10px] text-slate-400 mb-1.5">Copy a focused summary for chat, risk review, decision review, or roadmap planning.</p>
+                  <p className="text-[10px] text-slate-400 mb-1.5">Copy a focused built-in or custom summary for reviews, planning, support, or handoff.</p>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5 mb-2">
                     {exportPresetOptions.map(option => (
                       <button key={option.id} onClick={() => setExportPreset(option.id)} className={`px-2 py-1 rounded border text-left ${exportPreset === option.id ? 'bg-emerald-900/40 border-emerald-600 text-emerald-100' : 'bg-slate-950 border-slate-800 text-slate-300 hover:bg-slate-800'}`}>
@@ -2326,7 +2502,7 @@ export default function App() {
   );
 }
 
-function ImportConfirmModal({ imported, currentItems, onCancel, onConfirm }) {
+function ImportConfirmModal({ imported, currentItems, onCancel, onConfirm, onRepair }) {
   const modalRef = useFocusTrap(true);
   const current = summarizeItemsForImport(currentItems);
   const incoming = summarizeItemsForImport(imported.items);
@@ -2376,6 +2552,14 @@ function ImportConfirmModal({ imported, currentItems, onCancel, onConfirm }) {
             <div className="text-[11px] text-cyan-200 bg-cyan-950/20 border border-cyan-900/50 rounded p-2 space-y-1">
               <div className="text-[10px] uppercase tracking-wider text-cyan-300">Fix Suggestions</div>
               {validation.remediationTips.map(tip => <div key={tip}>- {tip}</div>)}
+              {validation.repairActions?.length > 0 && (
+                <div className="flex flex-wrap gap-1 pt-1">
+                  {validation.repairActions.map(action => (
+                    <button key={action.id} onClick={() => onRepair(action.id)} className="px-2 py-0.5 rounded bg-cyan-900/40 hover:bg-cyan-800/60 border border-cyan-700/50 text-[10px] text-cyan-100">{action.label}</button>
+                  ))}
+                  {validation.repairActions.length > 1 && <button onClick={() => onRepair('all')} className="px-2 py-0.5 rounded bg-cyan-800 hover:bg-cyan-700 border border-cyan-600 text-[10px] text-cyan-50">Fix all simple values</button>}
+                </div>
+              )}
             </div>
           )}
           {imported.mappings?.length > 0 && (
@@ -2669,24 +2853,39 @@ function SettingsModal({ config, commandShortcut, status, error, onShortcutChang
     cycle: config.labels?.cycle || DEFAULT_APP_CONFIG.labels.cycle,
     commandShortcut,
     importAliasesText: formatImportAliasesForSettings(config.importFieldAliases),
+    exportPresetsText: formatExportPresetsForSettings(config.exportPresets),
   });
+  const [formError, setFormError] = useState('');
   const canSave = form.projectName.trim() && form.workstream.trim() && form.cycle.trim() && status !== 'saving';
   function submit() {
     if (!canSave) return;
-    onShortcutChange(form.commandShortcut);
-    onSave({
-      ...config,
-      projectName: form.projectName,
-      labels: {
-        ...(config.labels || {}),
-        workstream: form.workstream,
-        cycle: form.cycle,
-      },
-      importFieldAliases: parseImportAliasesFromSettings(form.importAliasesText),
-    });
+    try {
+      const exportPresets = parseExportPresetsFromSettings(form.exportPresetsText);
+      setFormError('');
+      onShortcutChange(form.commandShortcut);
+      onSave({
+        ...config,
+        projectName: form.projectName,
+        labels: {
+          ...(config.labels || {}),
+          workstream: form.workstream,
+          cycle: form.cycle,
+        },
+        importFieldAliases: parseImportAliasesFromSettings(form.importAliasesText),
+        exportPresets,
+      });
+    } catch (err) {
+      setFormError(err.message);
+    }
   }
   function applyAliasPreset(preset) {
     setForm({ ...form, importAliasesText: formatImportAliasesForSettings(preset.aliases) });
+  }
+  let customExportPresetCount = 0;
+  try {
+    customExportPresetCount = parseExportPresetsFromSettings(form.exportPresetsText).length;
+  } catch {
+    customExportPresetCount = 0;
   }
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50" role="dialog" aria-modal="true" aria-label="Settings" onClick={onClose}>
@@ -2727,12 +2926,19 @@ function SettingsModal({ config, commandShortcut, status, error, onShortcutChang
             <textarea value={form.importAliasesText} onChange={e => setForm({ ...form, importAliasesText: e.target.value })} rows={6} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 font-mono text-[11px]" />
             <div className="text-[10px] text-slate-500 mt-1">Saved in local config.json.</div>
           </div>
+          <div>
+            <label className="block text-slate-500 mb-1">Custom markdown export presets</label>
+            <textarea value={form.exportPresetsText} onChange={e => setForm({ ...form, exportPresetsText: e.target.value })} rows={8} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 font-mono text-[11px]" />
+            <div className="text-[10px] text-slate-500 mt-1">JSON array. Template tokens include {'{{project}}'}, {'{{date}}'}, {'{{total}}'}, {'{{blocked}}'}, {'{{nextUp}}'}, {'{{risks}}'}, and {'{{roadmapCounts}}'}.</div>
+          </div>
           <div className="bg-slate-950/60 border border-slate-800 rounded p-2 text-[10px] text-slate-400 space-y-1">
             <div><span className="text-slate-500">Title:</span> {(form.projectName || DEFAULT_APP_CONFIG.projectName).toUpperCase()}</div>
             <div><span className="text-slate-500">Example:</span> {form.workstream || 'Workstream'} A in current {(form.cycle || 'Sprint').toLowerCase()}</div>
             <div><span className="text-slate-500">Shortcut:</span> {getShortcutLabel(form.commandShortcut)}</div>
             <div><span className="text-slate-500">Import aliases:</span> {Object.values(parseImportAliasesFromSettings(form.importAliasesText)).reduce((sum, aliases) => sum + aliases.length, 0)} active</div>
+            <div><span className="text-slate-500">Custom export presets:</span> {customExportPresetCount} active</div>
           </div>
+          {formError && <div className="text-[11px] text-red-300 bg-red-950/40 border border-red-900/50 rounded p-2">{formError}</div>}
           {error && <div className="text-[11px] text-red-300 bg-red-950/40 border border-red-900/50 rounded p-2">{error}</div>}
         </div>
         <div className="mt-4 flex items-center justify-end gap-2 flex-shrink-0">
