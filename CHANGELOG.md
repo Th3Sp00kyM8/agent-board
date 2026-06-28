@@ -4,6 +4,19 @@ All notable changes to Agent Board will be documented in this file.
 
 The format is based on Keep a Changelog, and this project uses simple `0.x` versions while the tool is early.
 
+## [0.10.0] - 2026-06-28
+
+### Added
+
+- Saved Project Map filter presets stored locally in the browser
+- Markdown export presets for sync handoff, risk review, decision log, and roadmap summary
+- Configurable import field aliases in Settings, saved to local `config.json`
+
+### Changed
+
+- Export modal now switches between focused markdown presets before copying
+- Settings modal now documents and edits import alias mappings for custom board schemas
+
 ## [0.9.0] - 2026-06-27
 
 ### Added

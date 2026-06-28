@@ -6,6 +6,7 @@ const BOARD_STATE_VERSION = 'agent-board-state-v2';
 const BOARD_APP_ID = 'agent-board';
 const COMMAND_SHORTCUT_KEY = 'agent-board-command-shortcut';
 const COMMAND_RECENTS_KEY = 'agent-board-command-recents';
+const PROJECT_MAP_PRESETS_KEY = 'agent-board-project-map-presets';
 const COLUMNS = ['To Do', 'Doing', 'In Review', 'Blocked', 'Done'];
 
 const RELEASE_TIERS = [
@@ -111,7 +112,47 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 const DEFAULT_APP_CONFIG = {
   projectName: 'Agent Board',
   labels: { workstream: 'Workstream', cycle: 'Sprint' },
+  importFieldAliases: IMPORT_FIELD_ALIASES,
 };
+
+function normalizeImportAliases(value) {
+  const aliases = {};
+  for (const [field, defaults] of Object.entries(IMPORT_FIELD_ALIASES)) {
+    const configured = value && Array.isArray(value[field]) ? value[field] : defaults;
+    aliases[field] = configured.map(alias => String(alias || '').trim()).filter(Boolean);
+  }
+  return aliases;
+}
+
+function normalizeAppConfig(config) {
+  return {
+    ...DEFAULT_APP_CONFIG,
+    ...(config || {}),
+    labels: { ...DEFAULT_APP_CONFIG.labels, ...((config || {}).labels || {}) },
+    importFieldAliases: normalizeImportAliases((config || {}).importFieldAliases),
+  };
+}
+
+function formatImportAliasesForSettings(aliases) {
+  const normalized = normalizeImportAliases(aliases);
+  return Object.entries(normalized)
+    .map(([field, values]) => `${field}: ${values.join(', ')}`)
+    .join('\n');
+}
+
+function parseImportAliasesFromSettings(text) {
+  const aliases = {};
+  String(text || '').split(/\r?\n/).forEach(line => {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+    const separator = trimmed.indexOf(':');
+    if (separator === -1) return;
+    const field = trimmed.slice(0, separator).trim();
+    if (!Object.prototype.hasOwnProperty.call(IMPORT_FIELD_ALIASES, field)) return;
+    aliases[field] = trimmed.slice(separator + 1).split(',').map(alias => alias.trim()).filter(Boolean);
+  });
+  return normalizeImportAliases(aliases);
+}
 
 const DEFAULT_SPRINT_BOARD = {
   lastRoundLabel: 'Sprint 0',
@@ -334,12 +375,12 @@ function createStatePayload(items, sprintBoard, extra = {}) {
   };
 }
 
-function mapImportItemFields(rawItems) {
+function mapImportItemFields(rawItems, importAliases = IMPORT_FIELD_ALIASES) {
   const mappingCounts = {};
   const items = rawItems.map(item => {
     if (!item || typeof item !== 'object' || Array.isArray(item)) return item;
     const mapped = { ...item };
-    for (const [targetField, aliases] of Object.entries(IMPORT_FIELD_ALIASES)) {
+    for (const [targetField, aliases] of Object.entries(normalizeImportAliases(importAliases))) {
       if (mapped[targetField] !== undefined && mapped[targetField] !== null && mapped[targetField] !== '') continue;
       const alias = aliases.find(key => mapped[key] !== undefined && mapped[key] !== null && mapped[key] !== '');
       if (!alias) continue;
@@ -355,7 +396,7 @@ function mapImportItemFields(rawItems) {
   return { items, mappings };
 }
 
-function normalizeStatePayload(data) {
+function normalizeStatePayload(data, importAliases = IMPORT_FIELD_ALIASES) {
   const warnings = [];
   let importedItems = null;
   let importedSprint = null;
@@ -377,7 +418,7 @@ function normalizeStatePayload(data) {
     throw new Error('expected an items array or an export object with { items, sprintBoard }');
   }
 
-  const mappedImport = mapImportItemFields(importedItems);
+  const mappedImport = mapImportItemFields(importedItems, importAliases);
   importedItems = mappedImport.items;
   const validation = validateImportDryRun(data, importedItems, importedSprint);
   warnings.push(...validation.warnings);
@@ -626,10 +667,12 @@ export default function App() {
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [commandShortcut, setCommandShortcut] = useState(() => window.localStorage?.getItem(COMMAND_SHORTCUT_KEY) || 'mod+k');
   const [recentCommandIds, setRecentCommandIds] = useState(() => loadJsonLocalStorage(COMMAND_RECENTS_KEY, []));
+  const [projectMapPresets, setProjectMapPresets] = useState(() => loadJsonLocalStorage(PROJECT_MAP_PRESETS_KEY, []));
   const [configSaveStatus, setConfigSaveStatus] = useState('idle');
   const [configError, setConfigError] = useState('');
   const [copiedFlag, setCopiedFlag] = useState(false);
   const [syncFlag, setSyncFlag] = useState(false);
+  const [exportPreset, setExportPreset] = useState('sync');
   const [dragId, setDragId] = useState(null);
   const [dragOverColumn, setDragOverColumn] = useState(null);
   const [showBulkMove, setShowBulkMove] = useState(false);
@@ -646,6 +689,7 @@ export default function App() {
   const [undoState, setUndoState] = useState(null);
   const [focusedItemId, setFocusedItemId] = useState(null);
   const [projectMapFilters, setProjectMapFilters] = useState({ domain: 'All', owner: 'All', roadmapStage: 'All' });
+  const [selectedProjectMapPresetId, setSelectedProjectMapPresetId] = useState('');
   // Set of "column:tier" strings indicating collapsed sections
   const [collapsedSections, setCollapsedSections] = useState(() => new Set());
 
@@ -659,16 +703,18 @@ export default function App() {
 
   useEffect(() => {
     async function load() {
+      let configForImport = DEFAULT_APP_CONFIG;
       try {
         const configRes = await fetch('/api/config');
         if (configRes.ok) {
           const configData = await configRes.json();
-          setAppConfig({ ...DEFAULT_APP_CONFIG, ...configData, labels: { ...DEFAULT_APP_CONFIG.labels, ...(configData.labels || {}) } });
+          configForImport = normalizeAppConfig(configData);
+          setAppConfig(configForImport);
         }
         const res = await fetch('/api/state');
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
-        const normalizedState = normalizeStatePayload(data);
+        const normalizedState = normalizeStatePayload(data, configForImport.importFieldAliases);
         setItems(normalizedState.items);
         if (normalizedState.sprintBoard) setSprintBoard({ ...DEFAULT_SPRINT_BOARD, ...normalizedState.sprintBoard });
         const templateChooserSeen = window.localStorage?.getItem('agent-board-template-chooser-seen') === '1';
@@ -822,6 +868,7 @@ export default function App() {
   const sources = ['All', ...Array.from(new Set(items.map(i => i.source.split(' ')[0]))).sort()];
   const agentStatus = deriveAgentStatus(items);
   const dependencyTrace = buildDependencyTrace(items);
+  const allDomainCounts = countBy(items, 'domain');
   const projectMapDomains = ['All', ...PROJECT_DOMAINS.filter(domain => items.some(item => item.domain === domain))];
   const projectMapOwners = ['All', ...Array.from(new Set(items.map(item => (item.owner || '').trim()).filter(Boolean))).sort()];
   const projectMapMatches = (item) => {
@@ -1031,6 +1078,39 @@ export default function App() {
     setFilterSeverity('All');
     setFilterReleaseTier('All');
   }
+
+  function persistProjectMapPresets(nextPresets) {
+    setProjectMapPresets(nextPresets);
+    window.localStorage?.setItem(PROJECT_MAP_PRESETS_KEY, JSON.stringify(nextPresets));
+  }
+
+  function projectMapPresetLabel(filters) {
+    return [
+      filters.domain === 'All' ? 'Any domain' : filters.domain,
+      filters.owner === 'All' ? 'Any owner' : filters.owner,
+      filters.roadmapStage === 'All' ? 'Any stage' : filters.roadmapStage,
+    ].join(' / ');
+  }
+
+  function saveProjectMapPreset() {
+    const preset = { id: uid(), label: projectMapPresetLabel(projectMapFilters), filters: { ...projectMapFilters } };
+    const nextPresets = [preset, ...projectMapPresets.filter(existing => existing.label !== preset.label)].slice(0, 8);
+    persistProjectMapPresets(nextPresets);
+    setSelectedProjectMapPresetId(preset.id);
+  }
+
+  function applyProjectMapPreset(presetId) {
+    setSelectedProjectMapPresetId(presetId);
+    const preset = projectMapPresets.find(item => item.id === presetId);
+    if (preset) setProjectMapFilters({ domain: 'All', owner: 'All', roadmapStage: 'All', ...preset.filters });
+  }
+
+  function deleteProjectMapPreset(presetId) {
+    const nextPresets = projectMapPresets.filter(preset => preset.id !== presetId);
+    persistProjectMapPresets(nextPresets);
+    if (selectedProjectMapPresetId === presetId) setSelectedProjectMapPresetId('');
+  }
+
   function saveCommandShortcut(nextShortcut) {
     setCommandShortcut(nextShortcut);
     window.localStorage?.setItem(COMMAND_SHORTCUT_KEY, nextShortcut);
@@ -1147,8 +1227,7 @@ export default function App() {
 
   async function saveAppConfig(nextConfig) {
     const normalized = {
-      ...DEFAULT_APP_CONFIG,
-      ...nextConfig,
+      ...normalizeAppConfig(nextConfig),
       projectName: nextConfig.projectName.trim(),
       labels: {
         ...DEFAULT_APP_CONFIG.labels,
@@ -1156,6 +1235,7 @@ export default function App() {
         workstream: nextConfig.labels.workstream.trim(),
         cycle: nextConfig.labels.cycle.trim(),
       },
+      importFieldAliases: normalizeImportAliases(nextConfig.importFieldAliases),
     };
     setConfigSaveStatus('saving');
     setConfigError('');
@@ -1168,7 +1248,7 @@ export default function App() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       const savedConfig = data.config || normalized;
-      setAppConfig({ ...DEFAULT_APP_CONFIG, ...savedConfig, labels: { ...DEFAULT_APP_CONFIG.labels, ...(savedConfig.labels || {}) } });
+      setAppConfig(normalizeAppConfig(savedConfig));
       setConfigSaveStatus('saved');
       setServerStatus('ok');
       setTimeout(() => {
@@ -1200,7 +1280,7 @@ export default function App() {
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
-        const imported = normalizeStatePayload(JSON.parse(event.target.result));
+        const imported = normalizeStatePayload(JSON.parse(event.target.result), appConfig.importFieldAliases);
         if (imported.items.length === 0) {
           alert('Imported file has no items.');
           return;
@@ -1240,7 +1320,7 @@ export default function App() {
     md += `**Project map:**\n`;
     md += `- Dependency edges: ${dependencyTrace.edges.length}; blocked by unfinished dependencies: ${dependencyTrace.blocked.length}; missing links: ${dependencyTrace.missing.length}\n`;
     md += `- Open risks: ${riskItems.filter(i => i.column !== 'Done').length}; decisions: ${decisionItems.length}; roadmap items: ${roadmapItems.length}\n`;
-    md += `- Domains: ${Object.entries(domainCounts).map(([key, count]) => `${key} ${count}`).join(', ')}\n\n`;
+    md += `- Domains: ${Object.entries(allDomainCounts).map(([key, count]) => `${key} ${count}`).join(', ')}\n\n`;
     md += `**Agent status (auto-derived from Doing column):**\n`;
     md += `- Developer: ${agentStatus.developer ? `${workstreamLabel} ${agentStatus.developer.path} (${agentStatus.developer.actualRound || '-'}) - ${agentStatus.developer.title}` : 'idle'}\n`;
     md += `- AI Agent: ${agentStatus.aiAgent ? `${workstreamLabel} ${agentStatus.aiAgent.path} (${agentStatus.aiAgent.actualRound || '-'}) - ${agentStatus.aiAgent.title}` : 'idle'}\n`;
@@ -1304,6 +1384,46 @@ export default function App() {
     return md;
   }
 
+  function exportPresetSummary(kind) {
+    const title = appConfig.projectName || 'Agent Board';
+    let md = `**${title} ${kind === 'risks' ? 'Risk Review' : kind === 'decisions' ? 'Decision Log' : 'Roadmap Summary'}** - ${new Date().toLocaleString()}\n\n`;
+    if (kind === 'risks') {
+      const risks = riskItems.filter(item => item.column !== 'Done');
+      md += `**Open risks (${risks.length}):**\n`;
+      if (risks.length === 0) md += `_(none)_\n`;
+      risks.forEach(item => {
+        md += `- ${workstreamLabel} ${item.path} - ${item.title} [${item.riskLevel}] owner: ${item.owner || 'Unassigned'} status: ${item.column}\n`;
+        if (item.notes) md += `  - Notes: ${item.notes}\n`;
+      });
+      md += `\n**Blocked work (${blockedItems.length}):**\n`;
+      if (blockedItems.length === 0) md += `_(none)_\n`;
+      blockedItems.forEach(item => { md += `- ${workstreamLabel} ${item.path} - ${item.title} [${item.severity}/${item.size}]\n`; });
+      return md;
+    }
+    if (kind === 'decisions') {
+      md += `**Pending decisions (${pendingDecisionItems.length}):**\n`;
+      if (pendingDecisionItems.length === 0) md += `_(none)_\n`;
+      pendingDecisionItems.forEach(item => {
+        md += `- ${workstreamLabel} ${item.path} - ${item.title} [${item.decisionStatus}] owner: ${item.owner || 'Unassigned'}\n`;
+        if (item.notes) md += `  - Notes: ${item.notes}\n`;
+      });
+      md += `\n**All decision items (${decisionItems.length}):**\n`;
+      if (decisionItems.length === 0) md += `_(none)_\n`;
+      decisionItems.forEach(item => { md += `- ${workstreamLabel} ${item.path} - ${item.title} [${item.decisionStatus}] status: ${item.column}\n`; });
+      return md;
+    }
+    ROADMAP_STAGES.forEach(stage => {
+      const stageItems = roadmapItems.filter(item => item.roadmapStage === stage);
+      md += `**${stage} (${stageItems.length}):**\n`;
+      if (stageItems.length === 0) md += `_(none)_\n`;
+      stageItems.forEach(item => {
+        md += `- ${workstreamLabel} ${item.path} - ${item.title} owner: ${item.owner || 'Unassigned'} status: ${item.column}\n`;
+      });
+      md += `\n`;
+    });
+    return md;
+  }
+
   function syncToChat() {
     const summary = exportSyncSummary();
     navigator.clipboard.writeText(summary).then(() => {
@@ -1349,6 +1469,13 @@ export default function App() {
     { id: 'backup', group: 'Data', label: 'Backup', detail: 'Create a timestamped restore point', keywords: 'save restore copy state', icon: <Save size={13} />, run: createBackup },
     { id: 'settings', group: 'Data', label: 'Settings', detail: 'Project title and labels', keywords: 'project labels config', icon: <Settings size={13} />, run: openSettings },
     { id: 'reset', group: 'Data', label: 'Reset board', detail: 'Clear local state after confirmation', keywords: 'wipe clear empty start over', icon: <RotateCcw size={13} />, run: () => setShowResetConfirm(true) },
+  ];
+  const exportPresetText = exportPreset === 'sync' ? exportSyncSummary() : exportPresetSummary(exportPreset);
+  const exportPresetOptions = [
+    { id: 'sync', label: 'Sync', detail: 'Active handoff' },
+    { id: 'risks', label: 'Risks', detail: 'Risk review' },
+    { id: 'decisions', label: 'Decisions', detail: 'Decision log' },
+    { id: 'roadmap', label: 'Roadmap', detail: 'Roadmap summary' },
   ];
 
   return (
@@ -1522,7 +1649,16 @@ export default function App() {
                     <select aria-label="Filter project map by roadmap stage" value={projectMapFilters.roadmapStage} onChange={e => setProjectMapFilters({ ...projectMapFilters, roadmapStage: e.target.value })} className="bg-slate-950 border border-slate-800 rounded px-2 py-1 text-[10px] text-slate-300">
                       {['All', ...ROADMAP_STAGES].map(stage => <option key={stage} value={stage}>{stage === 'All' ? 'All stages' : stage}</option>)}
                     </select>
-                    <button onClick={() => setProjectMapFilters({ domain: 'All', owner: 'All', roadmapStage: 'All' })} disabled={!projectMapFiltersActive} className={`px-2 py-1 rounded text-[10px] border ${projectMapFiltersActive ? 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200' : 'bg-slate-950 border-slate-900 text-slate-600 cursor-not-allowed'}`}>Clear map filters</button>
+                    <button onClick={() => { setProjectMapFilters({ domain: 'All', owner: 'All', roadmapStage: 'All' }); setSelectedProjectMapPresetId(''); }} disabled={!projectMapFiltersActive} className={`px-2 py-1 rounded text-[10px] border ${projectMapFiltersActive ? 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200' : 'bg-slate-950 border-slate-900 text-slate-600 cursor-not-allowed'}`}>Clear map filters</button>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 items-center">
+                    <button onClick={saveProjectMapPreset} disabled={!projectMapFiltersActive} className={`px-2 py-1 rounded border text-[10px] ${projectMapFiltersActive ? 'bg-blue-950/40 hover:bg-blue-900/50 border-blue-800/50 text-blue-200' : 'bg-slate-950 border-slate-900 text-slate-600 cursor-not-allowed'}`}>Save map view</button>
+                    {projectMapPresets.map(preset => (
+                      <span key={preset.id} className={`inline-flex items-center gap-1 rounded border ${selectedProjectMapPresetId === preset.id ? 'bg-blue-900/40 border-blue-600 text-blue-100' : 'bg-slate-950/50 border-slate-800 text-slate-300'}`}>
+                        <button onClick={() => applyProjectMapPreset(preset.id)} className="px-1.5 py-0.5 text-[10px] max-w-[180px] truncate">{preset.label}</button>
+                        <button onClick={() => deleteProjectMapPreset(preset.id)} className="pr-1 text-slate-500 hover:text-red-300" aria-label={`Delete map view ${preset.label}`}><X size={10} /></button>
+                      </span>
+                    ))}
                   </div>
                   <div className="grid grid-cols-3 gap-1 text-center">
                     <div className="bg-slate-950/50 border border-slate-800 rounded p-2"><div className="text-base text-slate-100 font-bold">{projectMapTrace.edges.length}</div><div className="text-[9px] text-slate-500">dependencies</div></div>
@@ -1843,10 +1979,18 @@ export default function App() {
               <div className="flex items-center justify-between p-3 border-b border-slate-800"><h2 className="text-base font-bold flex items-center gap-2"><Download size={16} />Export</h2><button onClick={() => setShowExport(false)} className="text-slate-400 hover:text-slate-200"><X size={18} /></button></div>
               <div className="p-3 overflow-y-auto flex-1 space-y-3">
                 <div>
-                  <h3 className="text-xs font-semibold mb-1">Sync to Chat (active state)</h3>
-                  <p className="text-[10px] text-slate-400 mb-1.5">Focused summary for Chat handoff. Top To Do filtered to Core Release only.</p>
-                  <div className="flex items-center gap-2 mb-1.5"><button onClick={() => copyToClipboard(exportSyncSummary())} className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-600 rounded text-xs flex items-center gap-1">{copiedFlag ? <Check size={12} /> : <MessageSquare size={12} />}{copiedFlag ? 'Copied' : 'Copy sync summary'}</button></div>
-                  <textarea value={exportSyncSummary()} readOnly rows={10} className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-[10px] font-mono" />
+                  <h3 className="text-xs font-semibold mb-1">Markdown export presets</h3>
+                  <p className="text-[10px] text-slate-400 mb-1.5">Copy a focused summary for chat, risk review, decision review, or roadmap planning.</p>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5 mb-2">
+                    {exportPresetOptions.map(option => (
+                      <button key={option.id} onClick={() => setExportPreset(option.id)} className={`px-2 py-1 rounded border text-left ${exportPreset === option.id ? 'bg-emerald-900/40 border-emerald-600 text-emerald-100' : 'bg-slate-950 border-slate-800 text-slate-300 hover:bg-slate-800'}`}>
+                        <span className="block text-[11px] font-semibold">{option.label}</span>
+                        <span className="block text-[9px] text-slate-500">{option.detail}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-2 mb-1.5"><button onClick={() => copyToClipboard(exportPresetText)} className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-600 rounded text-xs flex items-center gap-1">{copiedFlag ? <Check size={12} /> : <MessageSquare size={12} />}{copiedFlag ? 'Copied' : 'Copy preset'}</button></div>
+                  <textarea value={exportPresetText} readOnly rows={10} className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-[10px] font-mono" />
                 </div>
                 <div>
                   <h3 className="text-xs font-semibold mb-1">Download state.json copy</h3>
@@ -2208,6 +2352,7 @@ function SettingsModal({ config, commandShortcut, status, error, onShortcutChang
     workstream: config.labels?.workstream || DEFAULT_APP_CONFIG.labels.workstream,
     cycle: config.labels?.cycle || DEFAULT_APP_CONFIG.labels.cycle,
     commandShortcut,
+    importAliasesText: formatImportAliasesForSettings(config.importFieldAliases),
   });
   const canSave = form.projectName.trim() && form.workstream.trim() && form.cycle.trim() && status !== 'saving';
   function submit() {
@@ -2221,16 +2366,17 @@ function SettingsModal({ config, commandShortcut, status, error, onShortcutChang
         workstream: form.workstream,
         cycle: form.cycle,
       },
+      importFieldAliases: parseImportAliasesFromSettings(form.importAliasesText),
     });
   }
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50" role="dialog" aria-modal="true" aria-label="Settings" onClick={onClose}>
-      <div ref={modalRef} className="bg-slate-900 border border-slate-700 rounded-lg max-w-lg w-full p-4" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-3">
+      <div ref={modalRef} className="bg-slate-900 border border-slate-700 rounded-lg max-w-2xl w-full max-h-[90vh] flex flex-col p-4" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3 flex-shrink-0">
           <h2 className="text-base font-bold flex items-center gap-2"><Settings size={16} className="text-blue-400" />Settings</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-200"><X size={18} /></button>
         </div>
-        <div className="space-y-3 text-xs">
+        <div className="space-y-3 text-xs overflow-y-auto tk-vscroll pr-1">
           <div>
             <label className="block text-slate-500 mb-1">Project title</label>
             <input type="text" value={form.projectName} onChange={e => setForm({ ...form, projectName: e.target.value })} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5" autoFocus />
@@ -2252,14 +2398,20 @@ function SettingsModal({ config, commandShortcut, status, error, onShortcutChang
             </select>
             <div className="text-[10px] text-slate-500 mt-1">Saved locally in this browser, not in project files.</div>
           </div>
+          <div>
+            <label className="block text-slate-500 mb-1">Import field aliases</label>
+            <textarea value={form.importAliasesText} onChange={e => setForm({ ...form, importAliasesText: e.target.value })} rows={6} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 font-mono text-[11px]" />
+            <div className="text-[10px] text-slate-500 mt-1">Saved in local config.json.</div>
+          </div>
           <div className="bg-slate-950/60 border border-slate-800 rounded p-2 text-[10px] text-slate-400 space-y-1">
             <div><span className="text-slate-500">Title:</span> {(form.projectName || DEFAULT_APP_CONFIG.projectName).toUpperCase()}</div>
             <div><span className="text-slate-500">Example:</span> {form.workstream || 'Workstream'} A in current {(form.cycle || 'Sprint').toLowerCase()}</div>
             <div><span className="text-slate-500">Shortcut:</span> {getShortcutLabel(form.commandShortcut)}</div>
+            <div><span className="text-slate-500">Import aliases:</span> {Object.values(parseImportAliasesFromSettings(form.importAliasesText)).reduce((sum, aliases) => sum + aliases.length, 0)} active</div>
           </div>
           {error && <div className="text-[11px] text-red-300 bg-red-950/40 border border-red-900/50 rounded p-2">{error}</div>}
         </div>
-        <div className="mt-4 flex items-center justify-end gap-2">
+        <div className="mt-4 flex items-center justify-end gap-2 flex-shrink-0">
           {status === 'saved' && <span className="text-[11px] text-green-400 mr-auto">Saved</span>}
           {status === 'saving' && <span className="text-[11px] text-blue-400 mr-auto">Saving...</span>}
           <button onClick={onClose} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded text-xs">Cancel</button>

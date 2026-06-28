@@ -99,6 +99,7 @@ function verifyConfig() {
   expect(isNonEmptyString(config.projectName), 'config.example.json projectName must be a non-empty string.');
   expect(config.labels && isNonEmptyString(config.labels.workstream), 'config.example.json labels.workstream must be a non-empty string.');
   expect(config.labels && isNonEmptyString(config.labels.cycle), 'config.example.json labels.cycle must be a non-empty string.');
+  expect(config.importFieldAliases && Array.isArray(config.importFieldAliases.owner), 'config.example.json should include importFieldAliases.');
 }
 
 function verifySampleState() {
@@ -270,6 +271,9 @@ function verifyReleaseAssets() {
   expect(readme.includes('keyboard-selected'), 'README should document keyboard-selected command results.');
   expect(readme.includes('Import field mapping'), 'README should document import field mapping.');
   expect(readme.includes('domain, owner, and roadmap filters'), 'README should document Project Map filters.');
+  expect(readme.includes('markdown export presets'), 'README should document markdown export presets.');
+  expect(readme.includes('save common map views'), 'README should document saved Project Map views.');
+  expect(readme.includes('import field aliases'), 'README should document configurable import aliases.');
   expect(readme.includes('Focus Dashboard'), 'README should document the Focus Dashboard feature.');
   expect(readme.includes('Project Map'), 'README should document the Project Map feature.');
   expect(readme.includes('schemaVersion'), 'README should document board schema metadata.');

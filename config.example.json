@@ -4,5 +4,23 @@
     "workstream": "Workstream",
     "cycle": "Sprint"
   },
-  "notes": "Local project name and visible labels. Edit config.json after first run; keep real project data out of Git."
+  "importFieldAliases": {
+    "path": ["key", "ref", "number"],
+    "title": ["name", "summary", "task"],
+    "description": ["details", "body"],
+    "column": ["status", "state"],
+    "severity": ["priority", "impact"],
+    "size": ["estimate", "effort"],
+    "source": ["origin"],
+    "releaseTier": ["tier", "release_tier", "release"],
+    "candidateRound": ["plannedCycle", "planned_cycle", "plannedSprint", "planned_sprint", "milestone"],
+    "actualRound": ["completedCycle", "completed_cycle", "completedSprint", "completed_sprint"],
+    "domain": ["area", "category", "team"],
+    "dependencies": ["dependsOn", "depends_on", "blockedBy", "blocked_by"],
+    "riskLevel": ["risk", "risk_level"],
+    "roadmapStage": ["roadmap", "stage"],
+    "decisionStatus": ["decision", "decision_status"],
+    "owner": ["assignee", "responsible", "lead"]
+  },
+  "notes": "Local project name, visible labels, and import aliases. Edit config.json after first run; keep real project data out of Git."
 }
