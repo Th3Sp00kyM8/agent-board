@@ -4,6 +4,17 @@ All notable changes to Agent Board will be documented in this file.
 
 The format is based on Keep a Changelog, and this project uses simple `0.x` versions while the tool is early.
 
+## [0.20.0] - 2026-06-30
+
+### Added
+
+- Favorite toggle for starter custom markdown export presets
+- Local last-used tracking when starter presets are added or reopened
+
+### Changed
+
+- Starter gallery results now sort favorites first, then recently used starters, then default order
+
 ## [0.19.0] - 2026-06-30
 
 ### Added

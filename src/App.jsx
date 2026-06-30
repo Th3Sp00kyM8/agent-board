@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Plus, X, Edit2, Trash2, Copy, Download, Upload, Search, AlertTriangle, RotateCcw, Lock, ChevronDown, ChevronRight, ChevronLeft, Check, Calendar, Tag, FileText, ArrowRight, Palette, MessageSquare, Info, Target, Zap, AlertCircle, Save, WifiOff, Layers, Settings, GitBranch, ShieldAlert, Map, Scale, Undo2, Command, CornerDownLeft } from 'lucide-react';
+import { Plus, X, Edit2, Trash2, Copy, Download, Upload, Search, AlertTriangle, RotateCcw, Lock, ChevronDown, ChevronRight, ChevronLeft, Check, Calendar, Tag, FileText, ArrowRight, Palette, MessageSquare, Info, Target, Zap, AlertCircle, Save, WifiOff, Layers, Settings, GitBranch, ShieldAlert, Map, Scale, Undo2, Command, CornerDownLeft, Star } from 'lucide-react';
 
 const BOARD_SCHEMA_VERSION = 2;
 const BOARD_STATE_VERSION = 'agent-board-state-v2';
@@ -7,6 +7,7 @@ const BOARD_APP_ID = 'agent-board';
 const COMMAND_SHORTCUT_KEY = 'agent-board-command-shortcut';
 const COMMAND_RECENTS_KEY = 'agent-board-command-recents';
 const PROJECT_MAP_PRESETS_KEY = 'agent-board-project-map-presets';
+const EXPORT_PRESET_GALLERY_PREFS_KEY = 'agent-board-export-preset-gallery-prefs';
 const COLUMNS = ['To Do', 'Doing', 'In Review', 'Blocked', 'Done'];
 const PROJECT_MAP_PRESET_GROUPS = ['Focus', 'Review', 'Delivery', 'Custom'];
 const MAX_CUSTOM_EXPORT_PRESETS = 6;
@@ -917,6 +918,16 @@ function loadJsonLocalStorage(key, fallback) {
   }
 }
 
+function normalizeGalleryPrefs(value) {
+  const ids = new Set(EXPORT_PRESET_GALLERY.map(preset => preset.id));
+  const favoriteIds = Array.isArray(value?.favoriteIds) ? value.favoriteIds.map(id => String(id || '')).filter(id => ids.has(id)) : [];
+  const rawLastUsed = value?.lastUsed && typeof value.lastUsed === 'object' && !Array.isArray(value.lastUsed) ? value.lastUsed : {};
+  const lastUsed = Object.fromEntries(Object.entries(rawLastUsed)
+    .map(([id, timestamp]) => [String(id), Number(timestamp) || 0])
+    .filter(([id, timestamp]) => ids.has(id) && timestamp > 0));
+  return { favoriteIds, lastUsed };
+}
+
 function safeFilenamePart(value) {
   return String(value || 'export').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'export';
 }
@@ -942,8 +953,8 @@ function summarizeItemsForImport(items) {
 }
 
 function buildImportDiff(currentItems, incomingItems) {
-  const currentByPath = new Map(currentItems.map(item => [String(item.path || '').toLowerCase(), item]));
-  const incomingByPath = new Map(incomingItems.map(item => [String(item.path || '').toLowerCase(), item]));
+  const currentByPath = new globalThis.Map(currentItems.map(item => [String(item.path || '').toLowerCase(), item]));
+  const incomingByPath = new globalThis.Map(incomingItems.map(item => [String(item.path || '').toLowerCase(), item]));
   const added = incomingItems.filter(item => !currentByPath.has(String(item.path || '').toLowerCase())).slice(0, 6);
   const removed = currentItems.filter(item => !incomingByPath.has(String(item.path || '').toLowerCase())).slice(0, 6);
   const diffFields = ['title', 'column', 'owner', 'domain', 'roadmapStage', 'riskLevel'];
@@ -3137,16 +3148,26 @@ function SettingsModal({ config, commandShortcut, status, error, onShortcutChang
   const [selectedGalleryPresetId, setSelectedGalleryPresetId] = useState(EXPORT_PRESET_GALLERY[0]?.id || '');
   const [galleryCategory, setGalleryCategory] = useState('All');
   const [gallerySearch, setGallerySearch] = useState('');
+  const [galleryPrefs, setGalleryPrefs] = useState(() => normalizeGalleryPrefs(loadJsonLocalStorage(EXPORT_PRESET_GALLERY_PREFS_KEY, {})));
   const [formError, setFormError] = useState('');
   const selectedExportPreset = exportPresetDrafts.find(preset => preset.id === selectedExportPresetId) || exportPresetDrafts[0] || null;
   const selectedGalleryPreset = EXPORT_PRESET_GALLERY.find(preset => preset.id === selectedGalleryPresetId) || EXPORT_PRESET_GALLERY[0] || null;
   const selectedGalleryExisting = selectedGalleryPreset ? exportPresetDrafts.find(preset => preset.id === selectedGalleryPreset.id || preset.label === selectedGalleryPreset.label) : null;
+  const selectedGalleryFavorite = selectedGalleryPreset ? galleryPrefs.favoriteIds.includes(selectedGalleryPreset.id) : false;
   const canAddSelectedGalleryPreset = Boolean(selectedGalleryPreset && !selectedGalleryExisting && exportPresetDrafts.length < MAX_CUSTOM_EXPORT_PRESETS);
   const gallerySearchTerm = gallerySearch.trim().toLowerCase();
+  const galleryFavoriteIds = new Set(galleryPrefs.favoriteIds);
+  const galleryOrder = new globalThis.Map(EXPORT_PRESET_GALLERY.map((preset, index) => [preset.id, index]));
   const filteredGalleryPresets = EXPORT_PRESET_GALLERY.filter(preset => {
     const categoryMatches = galleryCategory === 'All' || preset.category === galleryCategory;
     const searchText = `${preset.label} ${preset.detail} ${preset.category} ${preset.keywords || ''}`.toLowerCase();
     return categoryMatches && (!gallerySearchTerm || searchText.includes(gallerySearchTerm));
+  }).sort((a, b) => {
+    const favoriteDelta = Number(galleryFavoriteIds.has(b.id)) - Number(galleryFavoriteIds.has(a.id));
+    if (favoriteDelta) return favoriteDelta;
+    const usedDelta = (galleryPrefs.lastUsed[b.id] || 0) - (galleryPrefs.lastUsed[a.id] || 0);
+    if (usedDelta) return usedDelta;
+    return (galleryOrder.get(a.id) || 0) - (galleryOrder.get(b.id) || 0);
   });
   const exportPresetsValid = exportPresetDrafts.every(preset => String(preset.label || '').trim() && String(preset.template || '').trim());
   const canSave = form.projectName.trim() && form.workstream.trim() && form.cycle.trim() && exportPresetsValid && status !== 'saving';
@@ -3201,17 +3222,36 @@ function SettingsModal({ config, commandShortcut, status, error, onShortcutChang
     const existing = exportPresetDrafts.find(item => item.id === preset.id || item.label === preset.label);
     if (existing) {
       setSelectedExportPresetId(existing.id);
+      markGalleryPresetUsed(preset.id);
       return;
     }
     if (exportPresetDrafts.length >= MAX_CUSTOM_EXPORT_PRESETS) return;
     const nextPresets = [...exportPresetDrafts, preset];
     setExportPresetDrafts(nextPresets);
     setSelectedExportPresetId(preset.id);
+    markGalleryPresetUsed(preset.id);
   }
   function selectGalleryPreset(galleryPreset) {
     setSelectedGalleryPresetId(galleryPreset.id);
     const existing = exportPresetDrafts.find(item => item.id === galleryPreset.id || item.label === galleryPreset.label);
-    if (existing) setSelectedExportPresetId(existing.id);
+    if (existing) {
+      setSelectedExportPresetId(existing.id);
+      markGalleryPresetUsed(galleryPreset.id);
+    }
+  }
+  function saveGalleryPrefs(nextPrefs) {
+    const normalized = normalizeGalleryPrefs(nextPrefs);
+    setGalleryPrefs(normalized);
+    window.localStorage?.setItem(EXPORT_PRESET_GALLERY_PREFS_KEY, JSON.stringify(normalized));
+  }
+  function toggleGalleryFavorite(presetId) {
+    const favoriteIds = galleryPrefs.favoriteIds.includes(presetId)
+      ? galleryPrefs.favoriteIds.filter(id => id !== presetId)
+      : [presetId, ...galleryPrefs.favoriteIds];
+    saveGalleryPrefs({ ...galleryPrefs, favoriteIds });
+  }
+  function markGalleryPresetUsed(presetId) {
+    saveGalleryPrefs({ ...galleryPrefs, lastUsed: { ...galleryPrefs.lastUsed, [presetId]: Date.now() } });
   }
   function deleteExportPresetDraft() {
     if (!selectedExportPreset) return;
@@ -3305,11 +3345,12 @@ function SettingsModal({ config, commandShortcut, status, error, onShortcutChang
                 {filteredGalleryPresets.map(preset => {
                   const existing = exportPresetDrafts.find(item => item.id === preset.id || item.label === preset.label);
                   const selected = selectedGalleryPreset?.id === preset.id;
+                  const favorite = galleryFavoriteIds.has(preset.id);
                   return (
                     <button key={preset.id} onClick={() => selectGalleryPreset(preset)} type="button" className={`text-left rounded border px-2 py-1 ${selected ? 'bg-cyan-950/30 border-cyan-700/60 text-cyan-100' : existing ? 'bg-blue-950/30 hover:bg-blue-900/40 border-blue-900/50 text-blue-100' : 'bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-200'}`}>
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-[11px] font-semibold truncate">{preset.label}</span>
-                        <span className="text-[9px] uppercase tracking-wider text-slate-500">{existing ? 'Open' : selected ? 'Preview' : 'View'}</span>
+                        <span className="text-[9px] uppercase tracking-wider text-slate-500">{favorite ? 'Favorite' : existing ? 'Open' : selected ? 'Preview' : 'View'}</span>
                       </div>
                       <div className="text-[10px] text-slate-500 truncate">{preset.detail}</div>
                     </button>
@@ -3326,7 +3367,10 @@ function SettingsModal({ config, commandShortcut, status, error, onShortcutChang
                       <div className="text-[11px] font-semibold text-slate-200 truncate">{selectedGalleryPreset.label}</div>
                       <div className="text-[10px] text-slate-500 truncate">{selectedGalleryPreset.detail}</div>
                     </div>
-                    <button onClick={() => addExportPresetFromGallery(selectedGalleryPreset)} type="button" disabled={!canAddSelectedGalleryPreset} className={`px-2 py-1 rounded border text-[10px] whitespace-nowrap ${canAddSelectedGalleryPreset ? 'bg-cyan-900/40 hover:bg-cyan-800/60 border-cyan-700/50 text-cyan-100' : 'bg-slate-950 border-slate-800 text-slate-600 cursor-not-allowed'}`}>{selectedGalleryExisting ? 'Already added' : exportPresetDrafts.length >= MAX_CUSTOM_EXPORT_PRESETS ? 'Preset limit reached' : 'Add starter'}</button>
+                    <div className="flex items-center gap-1.5">
+                      <button onClick={() => toggleGalleryFavorite(selectedGalleryPreset.id)} type="button" title={selectedGalleryFavorite ? 'Remove starter favorite' : 'Favorite starter'} className={`h-7 w-7 inline-flex items-center justify-center rounded border ${selectedGalleryFavorite ? 'bg-amber-900/30 border-amber-700/50 text-amber-300' : 'bg-slate-950 border-slate-800 text-slate-500 hover:text-slate-200 hover:bg-slate-800'}`}><Star size={13} fill={selectedGalleryFavorite ? 'currentColor' : 'none'} /></button>
+                      <button onClick={() => addExportPresetFromGallery(selectedGalleryPreset)} type="button" disabled={!canAddSelectedGalleryPreset} className={`px-2 py-1 rounded border text-[10px] whitespace-nowrap ${canAddSelectedGalleryPreset ? 'bg-cyan-900/40 hover:bg-cyan-800/60 border-cyan-700/50 text-cyan-100' : 'bg-slate-950 border-slate-800 text-slate-600 cursor-not-allowed'}`}>{selectedGalleryExisting ? 'Already added' : exportPresetDrafts.length >= MAX_CUSTOM_EXPORT_PRESETS ? 'Preset limit reached' : 'Add starter'}</button>
+                    </div>
                   </div>
                   <pre className="max-h-28 overflow-y-auto whitespace-pre-wrap rounded bg-slate-950/80 border border-slate-800 p-2 text-[10px] leading-relaxed text-slate-300 tk-vscroll">{renderExportPresetGalleryPreview(selectedGalleryPreset, form.projectName)}</pre>
                 </div>
