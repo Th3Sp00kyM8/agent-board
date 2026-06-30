@@ -219,6 +219,12 @@ function normalizeExportPresets(value) {
   }).filter(Boolean).slice(0, 6);
 }
 
+function normalizeExportPresetBundle(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data) || data.type !== 'export-presets' || !Array.isArray(data.exportPresets)) return null;
+  const presets = normalizeExportPresets(data.exportPresets);
+  return presets.length ? { presets, exportedAt: data.exportedAt || null } : null;
+}
+
 function formatExportPresetsForSettings(presets) {
   return JSON.stringify(normalizeExportPresets(presets), null, 2);
 }
@@ -480,6 +486,22 @@ function normalizeProjectMapPresetBundle(data) {
     };
   }).filter(preset => preset.label).slice(0, 8);
   return presets.length ? { presets, exportedAt: data.exportedAt || null } : null;
+}
+
+function buildImportRepairPreview(items) {
+  const rows = [];
+  items.forEach(item => {
+    const path = item?.path || '-';
+    const title = item?.title || '(untitled)';
+    const column = normalizeImportedColumn(item?.column);
+    if (item?.column && column && column !== item.column) rows.push({ action: 'columns', field: 'Status', path, title, from: item.column, to: column });
+    const releaseTier = normalizeImportedReleaseTier(item?.releaseTier);
+    if (item?.releaseTier && releaseTier && releaseTier !== item.releaseTier) rows.push({ action: 'releaseTiers', field: 'Release tier', path, title, from: item.releaseTier, to: releaseTier });
+    if (!String(item?.owner || '').trim()) rows.push({ action: 'owners', field: 'Owner', path, title, from: '(blank)', to: 'Unassigned' });
+    if (item?.domain && !PROJECT_DOMAINS.includes(item.domain)) rows.push({ action: 'domains', field: 'Domain', path, title, from: item.domain, to: normalizeImportedDomain(item.domain) });
+    if (item?.roadmapStage && !ROADMAP_STAGES.includes(item.roadmapStage)) rows.push({ action: 'roadmap', field: 'Roadmap', path, title, from: item.roadmapStage, to: normalizeImportedRoadmapStage(item.roadmapStage) });
+  });
+  return rows.slice(0, 12);
 }
 
 function normalizeImportedColumn(value) {
@@ -854,11 +876,15 @@ function buildImportDiff(currentItems, incomingItems) {
   const incomingByPath = new Map(incomingItems.map(item => [String(item.path || '').toLowerCase(), item]));
   const added = incomingItems.filter(item => !currentByPath.has(String(item.path || '').toLowerCase())).slice(0, 6);
   const removed = currentItems.filter(item => !incomingByPath.has(String(item.path || '').toLowerCase())).slice(0, 6);
-  const changed = incomingItems.filter(item => {
+  const diffFields = ['title', 'column', 'owner', 'domain', 'roadmapStage', 'riskLevel'];
+  const changed = incomingItems.map(item => {
     const current = currentByPath.get(String(item.path || '').toLowerCase());
-    if (!current) return false;
-    return ['title', 'column', 'owner', 'domain', 'roadmapStage', 'riskLevel'].some(field => String(current[field] || '') !== String(item[field] || ''));
-  }).slice(0, 6);
+    if (!current) return null;
+    const changes = diffFields
+      .filter(field => String(current[field] || '') !== String(item[field] || ''))
+      .map(field => ({ field, from: current[field] || '(blank)', to: item[field] || '(blank)' }));
+    return changes.length ? { ...item, __changes: changes } : null;
+  }).filter(Boolean).slice(0, 6);
   const currentSummary = summarizeItemsForImport(currentItems);
   const incomingSummary = summarizeItemsForImport(incomingItems);
   return {
@@ -1487,6 +1513,14 @@ export default function App() {
     alert(`Imported ${bundle.presets.length} Project Map view(s).`);
   }
 
+  function importExportPresetBundle(bundle) {
+    const merged = [...bundle.presets, ...customExportPresets]
+      .filter((preset, index, list) => list.findIndex(item => item.id === preset.id || item.label === preset.label) === index)
+      .slice(0, 6);
+    saveAppConfig({ ...appConfig, exportPresets: merged });
+    alert(`Imported ${bundle.presets.length} custom export preset(s).`);
+  }
+
   function saveCommandShortcut(nextShortcut) {
     setCommandShortcut(nextShortcut);
     window.localStorage?.setItem(COMMAND_SHORTCUT_KEY, nextShortcut);
@@ -1670,6 +1704,11 @@ export default function App() {
         const mapPresetBundle = normalizeProjectMapPresetBundle(parsed);
         if (mapPresetBundle) {
           importProjectMapPresetBundle(mapPresetBundle);
+          return;
+        }
+        const exportPresetBundle = normalizeExportPresetBundle(parsed);
+        if (exportPresetBundle) {
+          importExportPresetBundle(exportPresetBundle);
           return;
         }
         const imported = normalizeStatePayload(parsed, appConfig.importFieldAliases);
@@ -2621,6 +2660,7 @@ function ImportConfirmModal({ imported, currentItems, onCancel, onConfirm, onRep
   const current = summarizeItemsForImport(currentItems);
   const incoming = summarizeItemsForImport(imported.items);
   const importDiff = buildImportDiff(currentItems, imported.items);
+  const repairPreview = buildImportRepairPreview(imported.items);
   const previewItems = imported.items.slice(0, 5);
   const validation = imported.validation || { ok: true, errors: [], warnings: [], remediationTips: [] };
   return (
@@ -2683,13 +2723,27 @@ function ImportConfirmModal({ imported, currentItems, onCancel, onConfirm, onRep
               <div className="text-[10px] uppercase tracking-wider text-cyan-300">Fix Suggestions</div>
               {validation.remediationTips.map(tip => <div key={tip}>- {tip}</div>)}
               {validation.repairActions?.length > 0 && (
-                <div className="flex flex-wrap gap-1 pt-1">
+              <div className="flex flex-wrap gap-1 pt-1">
                   {validation.repairActions.map(action => (
                     <button key={action.id} onClick={() => onRepair(action.id)} className="px-2 py-0.5 rounded bg-cyan-900/40 hover:bg-cyan-800/60 border border-cyan-700/50 text-[10px] text-cyan-100">{action.label}</button>
                   ))}
                   {validation.repairActions.length > 1 && <button onClick={() => onRepair('all')} className="px-2 py-0.5 rounded bg-cyan-800 hover:bg-cyan-700 border border-cyan-600 text-[10px] text-cyan-50">Fix all simple values</button>}
                 </div>
               )}
+            </div>
+          )}
+          {repairPreview.length > 0 && (
+            <div className="bg-cyan-950/10 border border-cyan-900/40 rounded p-2">
+              <div className="text-[10px] uppercase tracking-wider text-cyan-300 mb-1">Repair Preview</div>
+              <div className="space-y-1 text-[10px]">
+                {repairPreview.map((row, index) => (
+                  <div key={`${row.path}-${row.field}-${index}`} className="grid grid-cols-[54px_84px_1fr] gap-2 text-slate-300">
+                    <span className="font-mono text-blue-300 truncate">{row.path}</span>
+                    <span className="text-cyan-300 truncate">{row.field}</span>
+                    <span className="truncate"><span className="text-red-300">{row.from}</span> <ArrowRight size={10} className="inline text-slate-500" /> <span className="text-emerald-300">{row.to}</span></span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
           {imported.mappings?.length > 0 && (
@@ -2736,7 +2790,12 @@ function ImportDiffList({ title, items, empty }) {
     <div className="bg-slate-900/60 border border-slate-800 rounded p-2">
       <div className="text-slate-500 uppercase tracking-wider mb-1">{title}</div>
       <div className="space-y-0.5">
-        {items.map(item => <div key={`${title}-${item.id || item.path}`} className="text-slate-300 truncate"><span className="font-mono text-blue-300">{item.path || '-'}</span> {item.title || '(untitled)'}</div>)}
+        {items.map(item => (
+          <div key={`${title}-${item.id || item.path}`} className="text-slate-300">
+            <div className="truncate"><span className="font-mono text-blue-300">{item.path || '-'}</span> {item.title || '(untitled)'}</div>
+            {item.__changes?.length > 0 && <div className="text-[9px] text-slate-500 truncate">{item.__changes.map(change => `${change.field}: ${change.from} -> ${change.to}`).join('; ')}</div>}
+          </div>
+        ))}
         {items.length === 0 && <div className="text-slate-600 italic">{empty}</div>}
       </div>
     </div>
@@ -3060,6 +3119,26 @@ function SettingsModal({ config, commandShortcut, status, error, onShortcutChang
     setExportPresetDrafts(nextPresets);
     setSelectedExportPresetId(nextPresets[0]?.id || '');
   }
+  function exportPresetBundlePayload() {
+    return {
+      app: BOARD_APP_ID,
+      type: 'export-presets',
+      exportedAt: nowIso(),
+      exportPresets: normalizeExportPresets(exportPresetDrafts),
+    };
+  }
+  function copyExportPresetBundle() {
+    navigator.clipboard.writeText(JSON.stringify(exportPresetBundlePayload(), null, 2));
+  }
+  function downloadExportPresetBundle() {
+    const blob = new Blob([JSON.stringify(exportPresetBundlePayload(), null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `agent_board_export_presets_${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50" role="dialog" aria-modal="true" aria-label="Settings" onClick={onClose}>
       <div ref={modalRef} className="bg-slate-900 border border-slate-700 rounded-lg max-w-2xl w-full max-h-[90vh] flex flex-col p-4" onClick={(e) => e.stopPropagation()}>
@@ -3121,6 +3200,10 @@ function SettingsModal({ config, commandShortcut, status, error, onShortcutChang
               <div className="bg-slate-950/60 border border-slate-800 rounded p-2 text-[11px] text-slate-500">Add a preset to create a reusable markdown export.</div>
             )}
             <div className="text-[10px] text-slate-500 mt-1">Template tokens include {'{{project}}'}, {'{{date}}'}, {'{{total}}'}, {'{{blocked}}'}, {'{{nextUp}}'}, {'{{risks}}'}, and {'{{roadmapCounts}}'}.</div>
+            <div className="flex flex-wrap gap-1.5 mt-1.5">
+              <button onClick={copyExportPresetBundle} type="button" disabled={exportPresetDrafts.length === 0} className={`px-2 py-0.5 rounded border text-[10px] ${exportPresetDrafts.length ? 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200' : 'bg-slate-900 border-slate-800 text-slate-600 cursor-not-allowed'}`}>Copy preset bundle</button>
+              <button onClick={downloadExportPresetBundle} type="button" disabled={exportPresetDrafts.length === 0} className={`px-2 py-0.5 rounded border text-[10px] ${exportPresetDrafts.length ? 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200' : 'bg-slate-900 border-slate-800 text-slate-600 cursor-not-allowed'}`}>Download preset bundle</button>
+            </div>
             {!exportPresetsValid && <div className="text-[10px] text-amber-300 mt-1">Each custom preset needs a label and template before saving.</div>}
           </div>
           <div className="bg-slate-950/60 border border-slate-800 rounded p-2 text-[10px] text-slate-400 space-y-1">

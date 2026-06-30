@@ -286,9 +286,13 @@ function verifyReleaseAssets() {
   expect(readme.includes('fix suggestions'), 'README should document import remediation suggestions.');
   expect(readme.includes('custom markdown export presets'), 'README should document custom markdown export presets.');
   expect(readme.includes('form-based custom export preset builder'), 'README should document the custom export preset form builder.');
+  expect(readme.includes('copying, and downloading reusable markdown templates'), 'README should document custom export preset sharing.');
   expect(readme.includes('{{project}}'), 'README should document custom export template tokens.');
   expect(readme.includes('repaired from the preview'), 'README should document import preview repair actions.');
   expect(readme.includes('replacement diff'), 'README should document the import replacement diff.');
+  expect(readme.includes('field-level changes'), 'README should document field-level import diff details.');
+  expect(readme.includes('repair preview with before/after values'), 'README should document repair preview values.');
+  expect(readme.includes('custom export preset bundles'), 'README should document importing custom export preset bundles.');
   expect(readme.includes('missing owners, unknown domains, unknown roadmap stages'), 'README should document owner/domain/roadmap import validation.');
   expect(readme.includes('imported as shared view bundles'), 'README should document importing Project Map view bundles.');
   expect(readme.includes('Focus Dashboard'), 'README should document the Focus Dashboard feature.');

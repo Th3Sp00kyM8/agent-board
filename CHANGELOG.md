@@ -4,6 +4,20 @@ All notable changes to Agent Board will be documented in this file.
 
 The format is based on Keep a Changelog, and this project uses simple `0.x` versions while the tool is early.
 
+## [0.16.0] - 2026-06-30
+
+### Added
+
+- Copy and download actions for sharing custom markdown export preset bundles
+- Import support for custom markdown export preset bundles
+- Repair preview rows that show before/after values before applying simple import fixes
+- Field-level change details in the import replacement diff
+
+### Changed
+
+- Import review now makes changed paths easier to audit before board replacement
+- Custom reporting templates can now move between Agent Board copies without editing config files
+
 ## [0.15.0] - 2026-06-28
 
 ### Added
