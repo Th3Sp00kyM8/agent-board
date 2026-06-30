@@ -4,6 +4,18 @@ All notable changes to Agent Board will be documented in this file.
 
 The format is based on Keep a Changelog, and this project uses simple `0.x` versions while the tool is early.
 
+## [0.19.0] - 2026-06-30
+
+### Added
+
+- Category filters for starter custom markdown export presets
+- Search box for finding starter export presets by label, category, detail, or keywords
+- Empty-state message when starter gallery filters have no matches
+
+### Changed
+
+- Starter report templates now carry lightweight category and keyword metadata
+
 ## [0.18.0] - 2026-06-30
 
 ### Added

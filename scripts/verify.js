@@ -286,7 +286,9 @@ function verifyReleaseAssets() {
   expect(readme.includes('fix suggestions'), 'README should document import remediation suggestions.');
   expect(readme.includes('custom markdown export presets'), 'README should document custom markdown export presets.');
   expect(readme.includes('form-based custom export preset builder'), 'README should document the custom export preset form builder.');
-  expect(readme.includes('starter gallery'), 'README should document the export preset starter gallery.');
+  expect(readme.includes('searchable starter gallery'), 'README should document the searchable export preset starter gallery.');
+  expect(readme.includes('category filters'), 'README should document starter export preset categories.');
+  expect(readme.includes('searched, filtered by category'), 'README should document starter export preset search and filtering.');
   expect(readme.includes('preview examples'), 'README should document starter export preset previews.');
   expect(readme.includes('rendered example before it is added'), 'README should document starter export preview-before-add behavior.');
   expect(readme.includes('executive status, release readiness, risk watch, decision review, and planning intake'), 'README should document starter export preset examples.');

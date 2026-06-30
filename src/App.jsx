@@ -129,33 +129,45 @@ const EXPORT_PRESET_GALLERY = [
     id: 'executive-status',
     label: 'Executive Status',
     detail: 'Compact leadership update',
+    category: 'Leadership',
+    keywords: 'executive leadership stakeholder status update summary',
     template: '**{{project}} Executive Status** - {{date}}\n\n**Snapshot:** {{total}} total - Doing {{doing}} - Blocked {{blocked}} - Done {{done}}\n\n**Needs attention:**\n{{risks}}\n\n**Next up:**\n{{nextUp}}',
   },
   {
     id: 'release-readiness',
     label: 'Release Readiness',
     detail: 'Go/no-go review',
+    category: 'Delivery',
+    keywords: 'release delivery readiness go no go blockers roadmap',
     template: '**{{project}} Release Readiness** - {{date}}\n\n**Readiness:** {{done}} done / {{total}} total - Blocked {{blocked}}\n\n**Open risks:**\n{{risks}}\n\n**Roadmap:**\n{{roadmapCounts}}\n\n**Next review:**\n{{nextUp}}',
   },
   {
     id: 'risk-watch',
     label: 'Risk Watch',
     detail: 'Focused risk review',
+    category: 'Risk',
+    keywords: 'risk blocker critical support watch',
     template: '**{{project}} Risk Watch** - {{date}}\n\n**Blocked:** {{blocked}}\n\n**Risks:**\n{{risks}}\n\n**Immediate follow-up:**\n{{nextUp}}',
   },
   {
     id: 'decision-review',
     label: 'Decision Review',
     detail: 'Decision meeting prep',
+    category: 'Leadership',
+    keywords: 'decision leadership meeting review stakeholder',
     template: '**{{project}} Decision Review** - {{date}}\n\n**Current snapshot:** {{total}} total - Blocked {{blocked}}\n\n**Roadmap context:**\n{{roadmapCounts}}\n\n**Items to resolve:**\n{{nextUp}}',
   },
   {
     id: 'planning-intake',
     label: 'Planning Intake',
     detail: 'Backlog and next-work scan',
+    category: 'Planning',
+    keywords: 'planning intake backlog roadmap next work',
     template: '**{{project}} Planning Intake** - {{date}}\n\n**Workload:** {{total}} total - Doing {{doing}} - Blocked {{blocked}}\n\n**Roadmap:**\n{{roadmapCounts}}\n\n**Candidate next work:**\n{{nextUp}}',
   },
 ];
+
+const EXPORT_PRESET_GALLERY_CATEGORIES = ['All', 'Leadership', 'Delivery', 'Risk', 'Planning'];
 
 const DOMAIN_COLORS = {
   Delivery: 'bg-blue-900/40 text-blue-300 border-blue-700/40',
@@ -3123,11 +3135,19 @@ function SettingsModal({ config, commandShortcut, status, error, onShortcutChang
   const [exportPresetDrafts, setExportPresetDrafts] = useState(initialExportPresetDrafts);
   const [selectedExportPresetId, setSelectedExportPresetId] = useState(initialExportPresetDrafts[0]?.id || '');
   const [selectedGalleryPresetId, setSelectedGalleryPresetId] = useState(EXPORT_PRESET_GALLERY[0]?.id || '');
+  const [galleryCategory, setGalleryCategory] = useState('All');
+  const [gallerySearch, setGallerySearch] = useState('');
   const [formError, setFormError] = useState('');
   const selectedExportPreset = exportPresetDrafts.find(preset => preset.id === selectedExportPresetId) || exportPresetDrafts[0] || null;
   const selectedGalleryPreset = EXPORT_PRESET_GALLERY.find(preset => preset.id === selectedGalleryPresetId) || EXPORT_PRESET_GALLERY[0] || null;
   const selectedGalleryExisting = selectedGalleryPreset ? exportPresetDrafts.find(preset => preset.id === selectedGalleryPreset.id || preset.label === selectedGalleryPreset.label) : null;
   const canAddSelectedGalleryPreset = Boolean(selectedGalleryPreset && !selectedGalleryExisting && exportPresetDrafts.length < MAX_CUSTOM_EXPORT_PRESETS);
+  const gallerySearchTerm = gallerySearch.trim().toLowerCase();
+  const filteredGalleryPresets = EXPORT_PRESET_GALLERY.filter(preset => {
+    const categoryMatches = galleryCategory === 'All' || preset.category === galleryCategory;
+    const searchText = `${preset.label} ${preset.detail} ${preset.category} ${preset.keywords || ''}`.toLowerCase();
+    return categoryMatches && (!gallerySearchTerm || searchText.includes(gallerySearchTerm));
+  });
   const exportPresetsValid = exportPresetDrafts.every(preset => String(preset.label || '').trim() && String(preset.template || '').trim());
   const canSave = form.projectName.trim() && form.workstream.trim() && form.cycle.trim() && exportPresetsValid && status !== 'saving';
   function submit() {
@@ -3273,8 +3293,16 @@ function SettingsModal({ config, commandShortcut, status, error, onShortcutChang
                 <div className="text-[10px] uppercase tracking-wider text-slate-500">Starter Gallery</div>
                 <div className="text-[10px] text-slate-600">{exportPresetDrafts.length}/{MAX_CUSTOM_EXPORT_PRESETS}</div>
               </div>
+              <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-1.5 mb-1.5">
+                <input value={gallerySearch} onChange={e => setGallerySearch(e.target.value)} placeholder="Search starters" className="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-[11px] text-slate-200 placeholder:text-slate-600" />
+                <div className="flex flex-wrap gap-1">
+                  {EXPORT_PRESET_GALLERY_CATEGORIES.map(category => (
+                    <button key={category} onClick={() => setGalleryCategory(category)} type="button" className={`px-2 py-1 rounded border text-[10px] ${galleryCategory === category ? 'bg-cyan-950/40 border-cyan-700/60 text-cyan-100' : 'bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-400'}`}>{category}</button>
+                  ))}
+                </div>
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                {EXPORT_PRESET_GALLERY.map(preset => {
+                {filteredGalleryPresets.map(preset => {
                   const existing = exportPresetDrafts.find(item => item.id === preset.id || item.label === preset.label);
                   const selected = selectedGalleryPreset?.id === preset.id;
                   return (
@@ -3287,6 +3315,9 @@ function SettingsModal({ config, commandShortcut, status, error, onShortcutChang
                     </button>
                   );
                 })}
+                {filteredGalleryPresets.length === 0 && (
+                  <div className="sm:col-span-2 rounded border border-slate-800 bg-slate-900/60 px-2 py-2 text-[11px] text-slate-500">No starter reports match the current filters.</div>
+                )}
               </div>
               {selectedGalleryPreset && (
                 <div className="mt-2 border border-slate-800 bg-slate-900/60 rounded p-2">
