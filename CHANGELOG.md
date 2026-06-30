@@ -4,6 +4,18 @@ All notable changes to Agent Board will be documented in this file.
 
 The format is based on Keep a Changelog, and this project uses simple `0.x` versions while the tool is early.
 
+## [0.21.0] - 2026-06-30
+
+### Added
+
+- Inline search filter for import replacement diff rows
+- Changed-field filter for import replacement diff review
+- Shown/total counts for added, changed, and removed import diff buckets
+
+### Changed
+
+- Import replacement diff now keeps full diff buckets available behind compact scrolling lists
+
 ## [0.20.0] - 2026-06-30
 
 ### Added

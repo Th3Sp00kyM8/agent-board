@@ -955,8 +955,8 @@ function summarizeItemsForImport(items) {
 function buildImportDiff(currentItems, incomingItems) {
   const currentByPath = new globalThis.Map(currentItems.map(item => [String(item.path || '').toLowerCase(), item]));
   const incomingByPath = new globalThis.Map(incomingItems.map(item => [String(item.path || '').toLowerCase(), item]));
-  const added = incomingItems.filter(item => !currentByPath.has(String(item.path || '').toLowerCase())).slice(0, 6);
-  const removed = currentItems.filter(item => !incomingByPath.has(String(item.path || '').toLowerCase())).slice(0, 6);
+  const added = incomingItems.filter(item => !currentByPath.has(String(item.path || '').toLowerCase()));
+  const removed = currentItems.filter(item => !incomingByPath.has(String(item.path || '').toLowerCase()));
   const diffFields = ['title', 'column', 'owner', 'domain', 'roadmapStage', 'riskLevel'];
   const changed = incomingItems.map(item => {
     const current = currentByPath.get(String(item.path || '').toLowerCase());
@@ -965,7 +965,7 @@ function buildImportDiff(currentItems, incomingItems) {
       .filter(field => String(current[field] || '') !== String(item[field] || ''))
       .map(field => ({ field, from: current[field] || '(blank)', to: item[field] || '(blank)' }));
     return changes.length ? { ...item, __changes: changes } : null;
-  }).filter(Boolean).slice(0, 6);
+  }).filter(Boolean);
   const currentSummary = summarizeItemsForImport(currentItems);
   const incomingSummary = summarizeItemsForImport(incomingItems);
   return {
@@ -978,6 +978,19 @@ function buildImportDiff(currentItems, incomingItems) {
     removed,
     changed,
   };
+}
+
+function importDiffItemText(item) {
+  return [
+    item?.path,
+    item?.title,
+    item?.column,
+    item?.owner,
+    item?.domain,
+    item?.roadmapStage,
+    item?.riskLevel,
+    ...(item?.__changes || []).flatMap(change => [change.field, change.from, change.to]),
+  ].join(' ').toLowerCase();
 }
 
 function fuzzyScore(query, text) {
@@ -2738,12 +2751,26 @@ export default function App() {
 
 function ImportConfirmModal({ imported, currentItems, onCancel, onConfirm, onRepair }) {
   const modalRef = useFocusTrap(true);
+  const [diffQuery, setDiffQuery] = useState('');
+  const [diffFieldFilter, setDiffFieldFilter] = useState('all');
   const current = summarizeItemsForImport(currentItems);
   const incoming = summarizeItemsForImport(imported.items);
   const importDiff = buildImportDiff(currentItems, imported.items);
   const repairPreview = buildImportRepairPreview(imported.items);
   const previewItems = imported.items.slice(0, 5);
   const validation = imported.validation || { ok: true, errors: [], warnings: [], remediationTips: [] };
+  const normalizedDiffQuery = diffQuery.trim().toLowerCase();
+  const changedFields = [...new Set(importDiff.changed.flatMap(item => item.__changes?.map(change => change.field) || []))].sort();
+  const filterDiffItems = (items, requireField = false) => items.filter(item => {
+    const textMatches = !normalizedDiffQuery || importDiffItemText(item).includes(normalizedDiffQuery);
+    const fieldMatches = diffFieldFilter === 'all' || (!requireField ? false : item.__changes?.some(change => change.field === diffFieldFilter));
+    return textMatches && fieldMatches;
+  });
+  const filteredDiff = {
+    added: filterDiffItems(importDiff.added),
+    changed: filterDiffItems(importDiff.changed, true),
+    removed: filterDiffItems(importDiff.removed),
+  };
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50" role="dialog" aria-modal="true" aria-label="Preview import replacement" onClick={onCancel}>
       <div ref={modalRef} className="bg-slate-900 border border-amber-700 rounded-lg max-w-3xl w-full max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
@@ -2780,10 +2807,17 @@ function ImportConfirmModal({ imported, currentItems, onCancel, onConfirm, onRep
               <ImportDelta label="Deps" value={importDiff.dependencyDelta} />
               <ImportDelta label="Blocked" value={importDiff.columnDeltas.Blocked} />
             </div>
+            <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-1.5 mb-2">
+              <input value={diffQuery} onChange={e => setDiffQuery(e.target.value)} placeholder="Filter diff by path, title, owner, or value" className="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-[11px] text-slate-200 placeholder:text-slate-600" />
+              <select value={diffFieldFilter} onChange={e => setDiffFieldFilter(e.target.value)} className="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-[11px] text-slate-200">
+                <option value="all">All changed fields</option>
+                {changedFields.map(field => <option key={field} value={field}>{field}</option>)}
+              </select>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-[10px]">
-              <ImportDiffList title="Added" items={importDiff.added} empty="No new paths" />
-              <ImportDiffList title="Changed" items={importDiff.changed} empty="No matching-path changes" />
-              <ImportDiffList title="Removed" items={importDiff.removed} empty="No removed paths" />
+              <ImportDiffList title="Added" items={filteredDiff.added} total={importDiff.added.length} empty={normalizedDiffQuery || diffFieldFilter !== 'all' ? 'No added paths match filters' : 'No new paths'} />
+              <ImportDiffList title="Changed" items={filteredDiff.changed} total={importDiff.changed.length} empty={normalizedDiffQuery || diffFieldFilter !== 'all' ? 'No changed paths match filters' : 'No matching-path changes'} />
+              <ImportDiffList title="Removed" items={filteredDiff.removed} total={importDiff.removed.length} empty={normalizedDiffQuery || diffFieldFilter !== 'all' ? 'No removed paths match filters' : 'No removed paths'} />
             </div>
           </div>
           <div className={`border rounded p-2 ${validation.ok ? 'bg-emerald-950/20 border-emerald-900/50 text-emerald-300' : 'bg-red-950/30 border-red-900/60 text-red-300'}`}>
@@ -2866,11 +2900,14 @@ function ImportDelta({ label, value }) {
   return <div className="bg-slate-900/70 border border-slate-800 rounded p-1"><div className={`font-semibold ${tone}`}>{formatted}</div><div className="text-slate-500 truncate">{label}</div></div>;
 }
 
-function ImportDiffList({ title, items, empty }) {
+function ImportDiffList({ title, items, total, empty }) {
   return (
     <div className="bg-slate-900/60 border border-slate-800 rounded p-2">
-      <div className="text-slate-500 uppercase tracking-wider mb-1">{title}</div>
-      <div className="space-y-0.5">
+      <div className="flex items-center justify-between gap-2 text-slate-500 uppercase tracking-wider mb-1">
+        <span>{title}</span>
+        <span>{items.length}/{total}</span>
+      </div>
+      <div className="space-y-0.5 max-h-32 overflow-y-auto tk-vscroll pr-1">
         {items.map(item => (
           <div key={`${title}-${item.id || item.path}`} className="text-slate-300">
             <div className="truncate"><span className="font-mono text-blue-300">{item.path || '-'}</span> {item.title || '(untitled)'}</div>
