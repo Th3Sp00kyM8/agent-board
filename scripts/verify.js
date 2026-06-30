@@ -303,6 +303,7 @@ function verifyReleaseAssets() {
   expect(readme.includes('filtered by changed field'), 'README should document import diff changed-field filters.');
   expect(readme.includes('shown/total counts'), 'README should document import diff shown/total counts.');
   expect(readme.includes('repair preview with before/after values'), 'README should document repair preview values.');
+  expect(readme.includes('repair history and can be undone before replacement'), 'README should document import repair undo history.');
   expect(readme.includes('custom export preset bundles'), 'README should document importing custom export preset bundles.');
   expect(readme.includes('missing owners, unknown domains, unknown roadmap stages'), 'README should document owner/domain/roadmap import validation.');
   expect(readme.includes('imported as shared view bundles'), 'README should document importing Project Map view bundles.');

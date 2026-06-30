@@ -575,6 +575,39 @@ function buildImportRepairPreview(items) {
   return rows.slice(0, 12);
 }
 
+function cloneImportItems(items) {
+  return (items || []).map(item => {
+    if (!item || typeof item !== 'object') return item;
+    return {
+      ...item,
+      dependencies: Array.isArray(item.dependencies) ? [...item.dependencies] : item.dependencies,
+    };
+  });
+}
+
+function cloneImportValidation(validation) {
+  if (!validation) return validation;
+  return {
+    ...validation,
+    errors: [...(validation.errors || [])],
+    warnings: [...(validation.warnings || [])],
+    remediationTips: [...(validation.remediationTips || [])],
+    repairActions: (validation.repairActions || []).map(action => ({ ...action })),
+  };
+}
+
+function importRepairActionLabel(actionId) {
+  const labels = {
+    all: 'Fix all simple values',
+    columns: 'Fix status values',
+    releaseTiers: 'Fix release tiers',
+    owners: 'Fill missing owners',
+    domains: 'Fix domains',
+    roadmap: 'Fix roadmap stages',
+  };
+  return labels[actionId] || 'Repair import values';
+}
+
 function normalizeImportedColumn(value) {
   const key = String(value || '').trim().toLowerCase().replace(/[_-]+/g, ' ');
   const matches = {
@@ -1821,6 +1854,15 @@ export default function App() {
 
   function repairImportPreview(actionId) {
     if (!showImportConfirm) return;
+    const repairHistory = [
+      ...(showImportConfirm.repairHistory || []),
+      {
+        label: importRepairActionLabel(actionId),
+        items: cloneImportItems(showImportConfirm.items),
+        warnings: [...(showImportConfirm.warnings || [])],
+        validation: cloneImportValidation(showImportConfirm.validation),
+      },
+    ].slice(-5);
     const repairedItems = showImportConfirm.items.map(item => {
       if (!item || typeof item !== 'object') return item;
       const next = { ...item };
@@ -1850,6 +1892,20 @@ export default function App() {
       items: repairedItems.map(ensureItemShape),
       warnings: [...sourceWarnings, ...validation.warnings],
       validation,
+      repairHistory,
+    });
+  }
+
+  function undoImportRepair() {
+    if (!showImportConfirm?.repairHistory?.length) return;
+    const repairHistory = showImportConfirm.repairHistory.slice(0, -1);
+    const previous = showImportConfirm.repairHistory[showImportConfirm.repairHistory.length - 1];
+    setShowImportConfirm({
+      ...showImportConfirm,
+      items: cloneImportItems(previous.items).map(ensureItemShape),
+      warnings: [...(previous.warnings || [])],
+      validation: cloneImportValidation(previous.validation),
+      repairHistory,
     });
   }
 
@@ -2701,7 +2757,7 @@ export default function App() {
           </div>
         )}
 
-        {showImportConfirm && <ImportConfirmModal imported={showImportConfirm} currentItems={items} onCancel={() => setShowImportConfirm(null)} onConfirm={confirmImport} onRepair={repairImportPreview} />}
+        {showImportConfirm && <ImportConfirmModal imported={showImportConfirm} currentItems={items} onCancel={() => setShowImportConfirm(null)} onConfirm={confirmImport} onRepair={repairImportPreview} onUndoRepair={undoImportRepair} />}
 
         {showExport && (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
@@ -2749,7 +2805,7 @@ export default function App() {
   );
 }
 
-function ImportConfirmModal({ imported, currentItems, onCancel, onConfirm, onRepair }) {
+function ImportConfirmModal({ imported, currentItems, onCancel, onConfirm, onRepair, onUndoRepair }) {
   const modalRef = useFocusTrap(true);
   const [diffQuery, setDiffQuery] = useState('');
   const [diffFieldFilter, setDiffFieldFilter] = useState('all');
@@ -2757,6 +2813,8 @@ function ImportConfirmModal({ imported, currentItems, onCancel, onConfirm, onRep
   const incoming = summarizeItemsForImport(imported.items);
   const importDiff = buildImportDiff(currentItems, imported.items);
   const repairPreview = buildImportRepairPreview(imported.items);
+  const repairHistory = imported.repairHistory || [];
+  const lastRepair = repairHistory[repairHistory.length - 1];
   const previewItems = imported.items.slice(0, 5);
   const validation = imported.validation || { ok: true, errors: [], warnings: [], remediationTips: [] };
   const normalizedDiffQuery = diffQuery.trim().toLowerCase();
@@ -2845,6 +2903,12 @@ function ImportConfirmModal({ imported, currentItems, onCancel, onConfirm, onRep
                   {validation.repairActions.length > 1 && <button onClick={() => onRepair('all')} className="px-2 py-0.5 rounded bg-cyan-800 hover:bg-cyan-700 border border-cyan-600 text-[10px] text-cyan-50">Fix all simple values</button>}
                 </div>
               )}
+            </div>
+          )}
+          {repairHistory.length > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-950/50 border border-cyan-900/40 rounded p-2 text-[11px] text-slate-300">
+              <span>{repairHistory.length} repair step{repairHistory.length === 1 ? '' : 's'} applied{lastRepair ? ` - last: ${lastRepair.label}` : ''}</span>
+              <button onClick={onUndoRepair} className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[10px] text-slate-100 flex items-center gap-1"><Undo2 size={11} />Undo repair</button>
             </div>
           )}
           {repairPreview.length > 0 && (

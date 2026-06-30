@@ -20,7 +20,6 @@ Agent Board is intentionally small and local-first. The goal is to stay easy to 
 - Starter export preset usage reset controls
 - Saved import diff filter presets
 - More import alias presets for CSV-like trackers and spreadsheet exports
-- Import repair history so users can undo a repair before replacement
 - More sample board presets for common workflows
 - Search and filter controls for larger boards
 - Optional archived-item view

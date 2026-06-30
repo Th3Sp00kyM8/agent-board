@@ -4,6 +4,17 @@ All notable changes to Agent Board will be documented in this file.
 
 The format is based on Keep a Changelog, and this project uses simple `0.x` versions while the tool is early.
 
+## [0.22.0] - 2026-06-30
+
+### Added
+
+- Import repair history inside the replacement preview
+- Undo repair control for rolling back the most recent import cleanup before replacement
+
+### Changed
+
+- Import repair actions now preserve the previous pending import state for safer review
+
 ## [0.21.0] - 2026-06-30
 
 ### Added
