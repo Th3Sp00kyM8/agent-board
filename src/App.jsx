@@ -259,6 +259,30 @@ function normalizeExportPresetBundle(data) {
   return presets.length ? { presets, exportedAt: data.exportedAt || null } : null;
 }
 
+function renderExportPresetGalleryPreview(preset, projectName) {
+  if (!preset) return '';
+  const replacements = {
+    project: projectName || DEFAULT_APP_CONFIG.projectName,
+    date: 'June 30, 2026, 9:00 AM',
+    total: '12',
+    todo: '4',
+    doing: '3',
+    review: '2',
+    blocked: '1',
+    done: '2',
+    openRisks: '2',
+    pendingDecisions: '1',
+    dependencyBlockers: '1',
+    missingDependencies: '0',
+    nextUp: '- Workstream A - Confirm onboarding flow [To Do] owner: Product\n- Workstream B - Review release checklist [Doing] owner: Engineering',
+    blockedItems: '- Workstream C - Unblock analytics export [Blocked] owner: Data',
+    risks: '- Workstream C - Unblock analytics export [Blocked] owner: Data\n- Workstream D - Confirm support coverage [In Review] owner: Operations',
+    decisions: '- Workstream E - Choose beta invite policy [In Review] owner: Product',
+    roadmapCounts: '- Now: 3\n- Next: 4\n- Later: 3\n- Backlog: 2',
+  };
+  return preset.template.replace(/\{\{([a-zA-Z0-9_]+)\}\}/g, (match, key) => Object.prototype.hasOwnProperty.call(replacements, key) ? replacements[key] : match);
+}
+
 function formatExportPresetsForSettings(presets) {
   return JSON.stringify(normalizeExportPresets(presets), null, 2);
 }
@@ -3098,8 +3122,12 @@ function SettingsModal({ config, commandShortcut, status, error, onShortcutChang
   });
   const [exportPresetDrafts, setExportPresetDrafts] = useState(initialExportPresetDrafts);
   const [selectedExportPresetId, setSelectedExportPresetId] = useState(initialExportPresetDrafts[0]?.id || '');
+  const [selectedGalleryPresetId, setSelectedGalleryPresetId] = useState(EXPORT_PRESET_GALLERY[0]?.id || '');
   const [formError, setFormError] = useState('');
   const selectedExportPreset = exportPresetDrafts.find(preset => preset.id === selectedExportPresetId) || exportPresetDrafts[0] || null;
+  const selectedGalleryPreset = EXPORT_PRESET_GALLERY.find(preset => preset.id === selectedGalleryPresetId) || EXPORT_PRESET_GALLERY[0] || null;
+  const selectedGalleryExisting = selectedGalleryPreset ? exportPresetDrafts.find(preset => preset.id === selectedGalleryPreset.id || preset.label === selectedGalleryPreset.label) : null;
+  const canAddSelectedGalleryPreset = Boolean(selectedGalleryPreset && !selectedGalleryExisting && exportPresetDrafts.length < MAX_CUSTOM_EXPORT_PRESETS);
   const exportPresetsValid = exportPresetDrafts.every(preset => String(preset.label || '').trim() && String(preset.template || '').trim());
   const canSave = form.projectName.trim() && form.workstream.trim() && form.cycle.trim() && exportPresetsValid && status !== 'saving';
   function submit() {
@@ -3159,6 +3187,11 @@ function SettingsModal({ config, commandShortcut, status, error, onShortcutChang
     const nextPresets = [...exportPresetDrafts, preset];
     setExportPresetDrafts(nextPresets);
     setSelectedExportPresetId(preset.id);
+  }
+  function selectGalleryPreset(galleryPreset) {
+    setSelectedGalleryPresetId(galleryPreset.id);
+    const existing = exportPresetDrafts.find(item => item.id === galleryPreset.id || item.label === galleryPreset.label);
+    if (existing) setSelectedExportPresetId(existing.id);
   }
   function deleteExportPresetDraft() {
     if (!selectedExportPreset) return;
@@ -3243,18 +3276,30 @@ function SettingsModal({ config, commandShortcut, status, error, onShortcutChang
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                 {EXPORT_PRESET_GALLERY.map(preset => {
                   const existing = exportPresetDrafts.find(item => item.id === preset.id || item.label === preset.label);
-                  const full = exportPresetDrafts.length >= MAX_CUSTOM_EXPORT_PRESETS && !existing;
+                  const selected = selectedGalleryPreset?.id === preset.id;
                   return (
-                    <button key={preset.id} onClick={() => addExportPresetFromGallery(preset)} type="button" disabled={full} className={`text-left rounded border px-2 py-1 ${full ? 'bg-slate-950 border-slate-900 text-slate-600 cursor-not-allowed' : existing ? 'bg-blue-950/30 hover:bg-blue-900/40 border-blue-900/50 text-blue-100' : 'bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-200'}`}>
+                    <button key={preset.id} onClick={() => selectGalleryPreset(preset)} type="button" className={`text-left rounded border px-2 py-1 ${selected ? 'bg-cyan-950/30 border-cyan-700/60 text-cyan-100' : existing ? 'bg-blue-950/30 hover:bg-blue-900/40 border-blue-900/50 text-blue-100' : 'bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-200'}`}>
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-[11px] font-semibold truncate">{preset.label}</span>
-                        <span className="text-[9px] uppercase tracking-wider text-slate-500">{existing ? 'Select' : full ? 'Full' : 'Add'}</span>
+                        <span className="text-[9px] uppercase tracking-wider text-slate-500">{existing ? 'Open' : selected ? 'Preview' : 'View'}</span>
                       </div>
                       <div className="text-[10px] text-slate-500 truncate">{preset.detail}</div>
                     </button>
                   );
                 })}
               </div>
+              {selectedGalleryPreset && (
+                <div className="mt-2 border border-slate-800 bg-slate-900/60 rounded p-2">
+                  <div className="flex items-start justify-between gap-2 mb-1.5">
+                    <div className="min-w-0">
+                      <div className="text-[11px] font-semibold text-slate-200 truncate">{selectedGalleryPreset.label}</div>
+                      <div className="text-[10px] text-slate-500 truncate">{selectedGalleryPreset.detail}</div>
+                    </div>
+                    <button onClick={() => addExportPresetFromGallery(selectedGalleryPreset)} type="button" disabled={!canAddSelectedGalleryPreset} className={`px-2 py-1 rounded border text-[10px] whitespace-nowrap ${canAddSelectedGalleryPreset ? 'bg-cyan-900/40 hover:bg-cyan-800/60 border-cyan-700/50 text-cyan-100' : 'bg-slate-950 border-slate-800 text-slate-600 cursor-not-allowed'}`}>{selectedGalleryExisting ? 'Already added' : exportPresetDrafts.length >= MAX_CUSTOM_EXPORT_PRESETS ? 'Preset limit reached' : 'Add starter'}</button>
+                  </div>
+                  <pre className="max-h-28 overflow-y-auto whitespace-pre-wrap rounded bg-slate-950/80 border border-slate-800 p-2 text-[10px] leading-relaxed text-slate-300 tk-vscroll">{renderExportPresetGalleryPreview(selectedGalleryPreset, form.projectName)}</pre>
+                </div>
+              )}
             </div>
             {selectedExportPreset ? (
               <div className="space-y-1.5">

@@ -287,6 +287,8 @@ function verifyReleaseAssets() {
   expect(readme.includes('custom markdown export presets'), 'README should document custom markdown export presets.');
   expect(readme.includes('form-based custom export preset builder'), 'README should document the custom export preset form builder.');
   expect(readme.includes('starter gallery'), 'README should document the export preset starter gallery.');
+  expect(readme.includes('preview examples'), 'README should document starter export preset previews.');
+  expect(readme.includes('rendered example before it is added'), 'README should document starter export preview-before-add behavior.');
   expect(readme.includes('executive status, release readiness, risk watch, decision review, and planning intake'), 'README should document starter export preset examples.');
   expect(readme.includes('copying, and downloading reusable markdown templates'), 'README should document custom export preset sharing.');
   expect(readme.includes('{{project}}'), 'README should document custom export template tokens.');

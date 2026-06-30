@@ -4,6 +4,18 @@ All notable changes to Agent Board will be documented in this file.
 
 The format is based on Keep a Changelog, and this project uses simple `0.x` versions while the tool is early.
 
+## [0.18.0] - 2026-06-30
+
+### Added
+
+- Rendered preview examples for starter custom markdown export presets
+- Explicit add action after selecting a starter report preview
+
+### Changed
+
+- Starter gallery tiles now preview report output before adding a custom preset
+- Existing starter presets now open the matching editable preset instead of duplicating it
+
 ## [0.17.0] - 2026-06-30
 
 ### Added
