@@ -9,6 +9,7 @@ const COMMAND_RECENTS_KEY = 'agent-board-command-recents';
 const PROJECT_MAP_PRESETS_KEY = 'agent-board-project-map-presets';
 const COLUMNS = ['To Do', 'Doing', 'In Review', 'Blocked', 'Done'];
 const PROJECT_MAP_PRESET_GROUPS = ['Focus', 'Review', 'Delivery', 'Custom'];
+const MAX_CUSTOM_EXPORT_PRESETS = 6;
 
 const RELEASE_TIERS = [
   { id: 'core_release', label: 'Core Release', color: 'text-blue-300', bgColor: 'bg-blue-900/30', borderColor: 'border-blue-700/40' },
@@ -123,6 +124,39 @@ const IMPORT_ALIAS_PRESETS = [
   },
 ];
 
+const EXPORT_PRESET_GALLERY = [
+  {
+    id: 'executive-status',
+    label: 'Executive Status',
+    detail: 'Compact leadership update',
+    template: '**{{project}} Executive Status** - {{date}}\n\n**Snapshot:** {{total}} total - Doing {{doing}} - Blocked {{blocked}} - Done {{done}}\n\n**Needs attention:**\n{{risks}}\n\n**Next up:**\n{{nextUp}}',
+  },
+  {
+    id: 'release-readiness',
+    label: 'Release Readiness',
+    detail: 'Go/no-go review',
+    template: '**{{project}} Release Readiness** - {{date}}\n\n**Readiness:** {{done}} done / {{total}} total - Blocked {{blocked}}\n\n**Open risks:**\n{{risks}}\n\n**Roadmap:**\n{{roadmapCounts}}\n\n**Next review:**\n{{nextUp}}',
+  },
+  {
+    id: 'risk-watch',
+    label: 'Risk Watch',
+    detail: 'Focused risk review',
+    template: '**{{project}} Risk Watch** - {{date}}\n\n**Blocked:** {{blocked}}\n\n**Risks:**\n{{risks}}\n\n**Immediate follow-up:**\n{{nextUp}}',
+  },
+  {
+    id: 'decision-review',
+    label: 'Decision Review',
+    detail: 'Decision meeting prep',
+    template: '**{{project}} Decision Review** - {{date}}\n\n**Current snapshot:** {{total}} total - Blocked {{blocked}}\n\n**Roadmap context:**\n{{roadmapCounts}}\n\n**Items to resolve:**\n{{nextUp}}',
+  },
+  {
+    id: 'planning-intake',
+    label: 'Planning Intake',
+    detail: 'Backlog and next-work scan',
+    template: '**{{project}} Planning Intake** - {{date}}\n\n**Workload:** {{total}} total - Doing {{doing}} - Blocked {{blocked}}\n\n**Roadmap:**\n{{roadmapCounts}}\n\n**Candidate next work:**\n{{nextUp}}',
+  },
+];
+
 const DOMAIN_COLORS = {
   Delivery: 'bg-blue-900/40 text-blue-300 border-blue-700/40',
   Dependency: 'bg-cyan-900/40 text-cyan-300 border-cyan-700/40',
@@ -216,7 +250,7 @@ function normalizeExportPresets(value) {
       detail: String(preset?.detail || 'Custom template').trim(),
       template,
     };
-  }).filter(Boolean).slice(0, 6);
+  }).filter(Boolean).slice(0, MAX_CUSTOM_EXPORT_PRESETS);
 }
 
 function normalizeExportPresetBundle(data) {
@@ -1516,7 +1550,7 @@ export default function App() {
   function importExportPresetBundle(bundle) {
     const merged = [...bundle.presets, ...customExportPresets]
       .filter((preset, index, list) => list.findIndex(item => item.id === preset.id || item.label === preset.label) === index)
-      .slice(0, 6);
+      .slice(0, MAX_CUSTOM_EXPORT_PRESETS);
     saveAppConfig({ ...appConfig, exportPresets: merged });
     alert(`Imported ${bundle.presets.length} custom export preset(s).`);
   }
@@ -3109,7 +3143,20 @@ function SettingsModal({ config, commandShortcut, status, error, onShortcutChang
       detail: 'Custom template',
       template: '**{{project}} Update** - {{date}}\n\n**Snapshot:** {{total}} total - Blocked {{blocked}}\n\n**Next up:**\n{{nextUp}}',
     };
-    const nextPresets = [...exportPresetDrafts, preset].slice(0, 6);
+    const nextPresets = [...exportPresetDrafts, preset].slice(0, MAX_CUSTOM_EXPORT_PRESETS);
+    setExportPresetDrafts(nextPresets);
+    setSelectedExportPresetId(preset.id);
+  }
+  function addExportPresetFromGallery(galleryPreset) {
+    const preset = normalizeExportPresets([galleryPreset])[0];
+    if (!preset) return;
+    const existing = exportPresetDrafts.find(item => item.id === preset.id || item.label === preset.label);
+    if (existing) {
+      setSelectedExportPresetId(existing.id);
+      return;
+    }
+    if (exportPresetDrafts.length >= MAX_CUSTOM_EXPORT_PRESETS) return;
+    const nextPresets = [...exportPresetDrafts, preset];
     setExportPresetDrafts(nextPresets);
     setSelectedExportPresetId(preset.id);
   }
@@ -3185,8 +3232,29 @@ function SettingsModal({ config, commandShortcut, status, error, onShortcutChang
                 {exportPresetDrafts.map(preset => <option key={preset.id} value={preset.id}>{preset.label}</option>)}
                 {exportPresetDrafts.length === 0 && <option value="">No custom presets</option>}
               </select>
-              <button onClick={addExportPresetDraft} type="button" className="px-2 py-1.5 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px]">Add preset</button>
+              <button onClick={addExportPresetDraft} type="button" disabled={exportPresetDrafts.length >= MAX_CUSTOM_EXPORT_PRESETS} className={`px-2 py-1.5 rounded border text-[11px] ${exportPresetDrafts.length < MAX_CUSTOM_EXPORT_PRESETS ? 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200' : 'bg-slate-900 border-slate-800 text-slate-600 cursor-not-allowed'}`}>Add preset</button>
               <button onClick={deleteExportPresetDraft} type="button" disabled={!selectedExportPreset} className={`px-2 py-1.5 rounded border text-[11px] ${selectedExportPreset ? 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200' : 'bg-slate-900 border-slate-800 text-slate-600 cursor-not-allowed'}`}>Delete</button>
+            </div>
+            <div className="bg-slate-950/50 border border-slate-800 rounded p-2 mb-1.5">
+              <div className="flex items-center justify-between gap-2 mb-1.5">
+                <div className="text-[10px] uppercase tracking-wider text-slate-500">Starter Gallery</div>
+                <div className="text-[10px] text-slate-600">{exportPresetDrafts.length}/{MAX_CUSTOM_EXPORT_PRESETS}</div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                {EXPORT_PRESET_GALLERY.map(preset => {
+                  const existing = exportPresetDrafts.find(item => item.id === preset.id || item.label === preset.label);
+                  const full = exportPresetDrafts.length >= MAX_CUSTOM_EXPORT_PRESETS && !existing;
+                  return (
+                    <button key={preset.id} onClick={() => addExportPresetFromGallery(preset)} type="button" disabled={full} className={`text-left rounded border px-2 py-1 ${full ? 'bg-slate-950 border-slate-900 text-slate-600 cursor-not-allowed' : existing ? 'bg-blue-950/30 hover:bg-blue-900/40 border-blue-900/50 text-blue-100' : 'bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-200'}`}>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-semibold truncate">{preset.label}</span>
+                        <span className="text-[9px] uppercase tracking-wider text-slate-500">{existing ? 'Select' : full ? 'Full' : 'Add'}</span>
+                      </div>
+                      <div className="text-[10px] text-slate-500 truncate">{preset.detail}</div>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
             {selectedExportPreset ? (
               <div className="space-y-1.5">

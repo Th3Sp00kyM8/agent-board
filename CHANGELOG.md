@@ -4,6 +4,18 @@ All notable changes to Agent Board will be documented in this file.
 
 The format is based on Keep a Changelog, and this project uses simple `0.x` versions while the tool is early.
 
+## [0.17.0] - 2026-06-30
+
+### Added
+
+- Starter gallery for adding common custom markdown export presets from Settings
+- Executive status, release readiness, risk watch, decision review, and planning intake custom report starters
+
+### Changed
+
+- Custom export preset creation now disables add actions once the six-preset limit is reached
+- Custom export preset limits now use one shared limit across manual, imported, and gallery presets
+
 ## [0.16.0] - 2026-06-30
 
 ### Added

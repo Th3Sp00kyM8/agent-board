@@ -17,7 +17,7 @@ Agent Board is intentionally small and local-first. The goal is to stay easy to 
 
 - More template presets and template customization controls
 - Richer recent-item jump history
-- Export preset starter gallery for common reporting workflows
+- Preview examples before adding starter export presets
 - Inline field-level filters in the import diff view
 - More import alias presets for CSV-like trackers and spreadsheet exports
 - Import repair history so users can undo a repair before replacement
